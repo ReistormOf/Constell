@@ -1,0 +1,12 @@
+Options -Indexes
+
+# Permite arquivos estáticos (CSS, JS, imagens) - liberado para todos
+<FilesMatch "\.(css|js|png|jpg|jpeg|gif|svg|ico|woff|woff2|ttf|eot)$">
+    Require all granted
+</FilesMatch>
+
+# Bloqueia apenas arquivos sensíveis (NÃO inclui style.css)
+<FilesMatch "^(caderno_data\.json|api_debug\.log)$">
+    Require all denied
+</FilesMatch>
+

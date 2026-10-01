@@ -1,0 +1,131 @@
+2026-08-30 00:33:48 - ::1 - Logout: ReiStorm_
+2026-08-30 00:42:35 - ::1 - Cadastro bem-sucedido: bruno.danieldemorais2024@gmail.com
+2026-08-30 00:43:11 - ::1 - Tentativa de login com conta não ativada: Teste
+2026-08-30 00:44:14 - ::1 - Conta ativada com sucesso: bruno.danieldemorais2024@gmail.com (ID: 9)
+2026-08-30 00:44:26 - ::1 - Login bem-sucedido: Teste (ID: 9)
+2026-08-30 00:44:51 - ::1 - Logout: Teste
+2026-08-30 00:45:03 - ::1 - Login bem-sucedido: Teste (ID: 9)
+2026-08-30 00:45:32 - ::1 - Logout: Teste
+2026-08-30 00:45:43 - ::1 - Login bem-sucedido: Teste (ID: 9)
+2026-08-30 00:50:18 - ::1 - Logout: Teste
+2026-08-30 00:54:01 - ::1 - Login bem-sucedido: Teste (ID: 9)
+2026-08-30 03:55:39 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-08-30 03:55:57 - 200.101.140.236 - Falha de login: Teste
+2026-08-30 03:57:31 - 200.101.140.236 - Tentativa com nome/email existente: Reistorm_ / bruno.danieldemorais2024@gmail.com
+2026-08-30 03:57:55 - 200.101.140.236 - Cadastro bem-sucedido: bruno.danieldemorais2024@gmail.com
+2026-08-30 03:58:49 - 200.101.140.236 - Conta ativada com sucesso: bruno.danieldemorais2024@gmail.com (ID: 10)
+2026-08-30 03:58:59 - 200.101.140.236 - Falha de login: bruno.danieldemorais2024@gmail.com
+2026-08-30 03:59:10 - 200.101.140.236 - Rate limit excedido – login bloqueado 15 min
+2026-08-30 03:59:43 - 200.101.140.236 - Rate limit excedido – login bloqueado 15 min
+2026-08-30 04:00:27 - 200.101.140.236 - Tentativa de login com IP bloqueado
+2026-08-30 04:01:21 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 10)
+2026-08-30 04:09:19 - 200.101.140.236 - Logout: ReiStorm_
+2026-08-30 04:10:36 - 200.101.140.236 - Cadastro bem-sucedido: bruno.danieldemorais2024@gmail.com
+2026-08-30 04:13:07 - 200.101.140.236 - Cadastro bem-sucedido: bruno.danieldemorais2024@gmail.com
+2026-08-30 04:13:24 - 200.101.140.236 - Conta ativada com sucesso: bruno.danieldemorais2024@gmail.com (ID: 12)
+2026-08-30 04:13:38 - 200.101.140.236 - Falha de login: bruno.danieldemorais2024@gmail.com
+2026-08-30 04:13:54 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-08-30 04:14:26 - 200.101.140.236 - Logout: ReiStorm_
+2026-08-30 04:16:05 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-08-30 04:16:45 - 200.101.140.236 - Logout: ReiStorm_
+2026-08-30 04:26:06 - 200.101.140.236 - Token inválido ou conta já ativada: 3b7c9665681e20a8e9cc9727f3be1f944ed8139ec8aa2f25cb204fc5ecd2f877
+2026-08-30 04:27:01 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-08-30 04:47:37 - 200.101.140.236 - Logout: ReiStorm_
+2026-08-30 04:52:05 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-08-30 05:30:34 - 200.101.140.236 - Falha de login: Reistorm_
+2026-08-30 05:30:49 - 200.101.140.236 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-08-30 12:31:13 - 200.101.140.236 - Logout: ReiStorm_
+2026-08-30 12:32:41 - 200.101.140.236 - Cadastro bem-sucedido: tdcidb01@gmail.com
+2026-08-30 12:32:55 - 200.101.140.236 - Conta ativada com sucesso: tdcidb01@gmail.com (ID: 13)
+2026-08-30 12:37:26 - 200.101.140.236 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 12:41:41 - 200.101.140.236 - Logout: Teste123
+2026-08-30 12:41:56 - 200.101.140.236 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 13:06:28 - 181.117.137.165 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 13:07:25 - 200.101.140.236 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 14:46:19 - 2804:d3c:3de:ba00:79c2:7ab1:a78f:7f07 - Falha de login: Teste123
+2026-08-30 15:55:49 - 85.240.138.243 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 16:20:45 - 2804:51b4:6617:1d3c:cd:9901:7198:9f08 - Falha de login: Teste123
+2026-08-30 16:21:58 - 2804:51b4:6617:1d3c:cd:9901:7198:9f08 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 16:22:54 - 2804:51b4:6617:1d3c:cd:9901:7198:9f08 - Logout: Teste123
+2026-08-30 16:58:34 - 2804:14c:5b71:88d9:3548:b434:9fc3:1854 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 17:08:43 - 2804:14c:87c5:82c9:9403:411a:7e8:60a7 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 20:29:49 - 2804:17c0:a02c:fb00:a586:e6ac:12d0:4822 - Falha de login: admin
+2026-08-30 20:29:52 - 2804:17c0:a02c:fb00:a586:e6ac:12d0:4822 - Falha de login: teste
+2026-08-30 20:30:02 - 2804:17c0:a02c:fb00:a586:e6ac:12d0:4822 - Falha de login: Teste123
+2026-08-30 20:30:13 - 2804:17c0:a02c:fb00:a586:e6ac:12d0:4822 - Login bem-sucedido: Teste123 (ID: 13)
+2026-08-30 23:38:33 - ::1 - Falha de login: ttest
+2026-08-30 23:39:32 - ::1 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-08-31 02:54:04 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-08-31 04:43:46 - 127.0.0.1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-08-31 06:33:12 - ::1 - Logout: ReiStorm_
+2026-08-31 06:33:22 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-08-31 23:46:09 - ::1 - Falha de login: ReiStorm_
+2026-08-31 23:46:33 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-01 06:02:32 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-01 06:03:27 - ::1 - Logout: ReiStorm_
+2026-09-01 06:16:43 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-01 21:47:22 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-01 22:03:48 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-01 23:47:11 - ::1 - Logout: ReiStorm_
+2026-09-01 23:47:18 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-02 23:20:38 - ::1 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-02 22:17:30 - 200.101.140.236 - Logout: ReiStorm_
+2026-09-02 22:17:49 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-09-02 22:35:37 - 200.101.140.236 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-03 14:48:35 - 200.250.66.82 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-04 16:52:23 - 200.250.66.82 - Falha de login: Reistorm_
+2026-09-04 16:52:33 - 200.250.66.82 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-05 01:19:41 - 200.101.140.236 - Falha de login: reistorm_
+2026-09-05 01:19:58 - 200.101.140.236 - Falha de login: reistorm_
+2026-09-05 01:20:17 - 200.101.140.236 - Falha de login: reistorm_
+2026-09-05 01:20:36 - 200.101.140.236 - Falha de login: reistorm_
+2026-09-08 09:26:39 - 189.45.150.218 - Falha de login: Reistorm_
+2026-09-08 09:27:04 - 189.45.150.218 - Falha de login: reistorm_
+2026-09-08 09:27:15 - 189.45.150.218 - Falha de login: reistorm_
+2026-09-08 09:27:35 - 189.45.150.218 - Falha de login: reistorm_
+2026-09-08 09:27:52 - 189.45.150.218 - Falha de login: Reistorm_
+2026-09-08 09:28:09 - 189.45.150.218 - Rate limit excedido – login bloqueado 15 min
+2026-09-08 09:31:46 - 189.45.150.218 - Tentativa de login com IP bloqueado
+2026-09-08 16:13:02 - 189.45.150.218 - Falha de login: reistorm_
+2026-09-08 16:13:12 - 189.45.150.218 - Falha de login: Reistorm_
+2026-09-08 16:13:24 - 189.45.150.218 - Falha de login: Reistorm_
+2026-09-08 16:13:32 - 189.45.150.218 - Falha de login: Reistorm_
+2026-09-09 00:30:28 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-09 00:30:47 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-09 00:31:35 - 200.101.140.236 - Logout: ReiStorm_
+2026-09-09 00:34:17 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-09 00:34:25 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-09 00:34:35 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-09 00:34:45 - 200.101.140.236 - Rate limit excedido – login bloqueado 15 min
+2026-09-09 00:41:35 - 200.101.140.236 - Tentativa de login com IP bloqueado
+2026-09-09 00:52:04 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-09-09 09:18:09 - 189.45.150.218 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-09 15:56:15 - 200.250.66.82 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-10 09:13:26 - 200.250.66.82 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-16 00:12:28 - 2804:d55:5253:4800:d478:4dc0:bfe:bf99 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-16 09:17:02 - 200.250.66.82 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-16 09:18:20 - 200.250.66.82 - Logout: ReiStorm_
+2026-09-16 09:19:44 - 200.250.66.82 - Senhas não coincidem para contasinftst02@gmail.com
+2026-09-16 09:20:35 - 200.250.66.82 - Cadastro bem-sucedido: contasinftst02@gmail.com
+2026-09-16 09:22:48 - 200.250.66.82 - Tentativa com nome/email existente: WorkAccount_ / containftst02@gmail.com
+2026-09-16 09:23:15 - 200.250.66.82 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-18 11:43:54 - 200.250.66.82 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-20 18:17:30 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-20 18:17:37 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-20 18:17:45 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-20 18:17:58 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-09-21 12:05:07 - 189.45.150.218 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-25 09:25:54 - 189.45.150.218 - Login bem-sucedido: Reistorm_ (ID: 12)
+2026-09-25 19:42:39 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-09-25 20:37:03 - 200.101.140.236 - Logout: ReiStorm_
+2026-09-25 21:04:59 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-25 21:05:07 - 200.101.140.236 - Falha de login: ReiStorm_
+2026-09-25 21:05:17 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-09-26 12:00:15 - 189.45.150.218 - Falha de login: ReiStorm_
+2026-09-26 12:00:47 - 200.250.66.82 - Falha de login: reistorm_
+2026-09-26 12:00:54 - 200.250.66.82 - Login bem-sucedido: reistorm_ (ID: 12)
+2026-09-26 12:43:58 - 189.45.150.218 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-09-27 14:27:47 - 200.101.140.236 - Logout: ReiStorm_
+2026-09-27 14:28:19 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)
+2026-09-27 14:28:25 - 200.101.140.236 - Logout: ReiStorm_
+2026-09-27 14:28:28 - 200.101.140.236 - Login bem-sucedido: ReiStorm_ (ID: 12)

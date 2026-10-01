@@ -1,0 +1,31 @@
+2026-08-29 07:30:34 - ::1 - Senhas não coincidem para 123@teste.vom
+2026-08-29 07:30:40 - ::1 - Senhas não coincidem para manutencao@gmail.com
+2026-08-29 07:30:46 - ::1 - Senhas não coincidem para manutencao@gmail.com
+2026-08-29 07:30:56 - ::1 - Senhas não coincidem para manutencao@gmail.com
+2026-08-29 07:31:22 - ::1 - Senhas não coincidem para 12313@gmail.com
+2026-08-29 07:31:36 - ::1 - Rate limit excedido
+2026-08-29 07:43:59 - ::1 - Rate limit excedido – bloqueado 15 min
+2026-08-29 07:44:34 - ::1 - Tentativa com IP bloqueado
+2026-08-29 07:46:07 - ::1 - Tentativa com nome/email existente: teste / bruno.danieldemorais2024@gmail.com
+2026-08-29 07:46:38 - ::1 - Cadastro bem-sucedido: bruno.danieldemorais2024@gmail.com
+2026-08-29 07:50:01 - ::1 - Falha de login: 2134234
+2026-08-29 07:50:04 - ::1 - Falha de login: 12341234123
+2026-08-29 07:50:07 - ::1 - Rate limit excedido – login bloqueado 15 min
+2026-08-29 07:50:10 - ::1 - Tentativa de login com IP bloqueado
+2026-08-29 07:50:14 - ::1 - Tentativa de login com IP bloqueado
+2026-08-29 07:55:06 - ::1 - Tentativa de recuperação com IP bloqueado
+2026-08-29 07:55:35 - ::1 - Recuperação solicitada para: bruno.danieldemorais2024@gmail.com
+2026-08-29 07:56:06 - ::1 - Conta ativada com sucesso: bruno.danieldemorais2024@gmail.com (ID: 8)
+2026-08-29 07:56:26 - ::1 - Recuperação solicitada para: bruno.danieldemorais2024@gmail.com
+2026-08-29 07:57:03 - ::1 - Senhas não coincidem - redefinir para usuário ID: 8
+2026-08-29 07:57:27 - ::1 - Senha redefinida para usuário ID: 8
+2026-08-29 22:08:16 - ::1 - Recuperação solicitada para: bd62593@gmail.com
+2026-08-29 22:09:50 - ::1 - Senha redefinida para usuário ID: 7
+2026-08-29 22:10:06 - ::1 - Login bem-sucedido: ReiStorm_ (ID: 7)
+2026-08-29 22:16:09 - ::1 - Login bem-sucedido: reistorm_ (ID: 7)
+2026-08-29 22:20:00 - ::1 - Logout: ReiStorm_
+2026-08-29 22:20:12 - ::1 - Login bem-sucedido: reistorm_ (ID: 7)
+2026-08-29 22:23:53 - ::1 - Logout: ReiStorm_
+2026-08-29 22:24:01 - ::1 - Login bem-sucedido: Erika (ID: 3)
+2026-08-29 22:33:00 - ::1 - Logout: erika
+2026-08-29 22:33:39 - ::1 - Login bem-sucedido: reistorm_ (ID: 7)
