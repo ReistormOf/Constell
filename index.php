@@ -3754,6 +3754,12 @@ echo '<script>window.CSRF_TOKEN = ' . json_encode($csrf_token) . ';</script>';
         [data-theme="light"] .navbar-premium .btn-toggle-sidebar:not(.collapsed) {
             color: #1f2328;
         }
+
+        #sidebar .sidebar-btn[title*="Checklist"]:hover {
+            background: rgba(46, 160, 67, 0.08);
+            color: #3fb950;
+            box-shadow: 0 0 28px rgba(46, 160, 67, 0.15);
+        }
     </style>
 </head>
 
@@ -3974,6 +3980,10 @@ echo '<script>window.CSRF_TOKEN = ' . json_encode($csrf_token) . ';</script>';
             </button>
             <button class="sidebar-btn" onclick="addEmptyList()" title="Adicionar Lista">
                 📋 <span class="tooltip">Lista</span>
+            </button>
+            <!-- 🔥 NOVO BOTÃO: CHECKLIST -->
+            <button class="sidebar-btn" onclick="addChecklist()" title="Adicionar Checklist">
+                ✅ <span class="tooltip">Checklist</span>
             </button>
             <div class="separator"></div>
             <button class="sidebar-btn" onclick="addEmptyTitle(1)" title="Título H1">H1 <span class="tooltip">H1</span></button>

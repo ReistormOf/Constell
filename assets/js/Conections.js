@@ -179,39 +179,52 @@ function restoreSelection() {
 }
 function restoreCardState(card) {
   const raw = card.dataset.state;
-  if (!raw) return;
-  let state;
-  try {
-    state = JSON.parse(raw);
-  } catch (e) {
-    console.warn("Erro ao parsear state do card", e);
-    return;
+  let state = null;
+  if (raw) {
+    try {
+      state = JSON.parse(raw);
+    } catch (e) {
+      console.warn("Erro ao parsear state do card", e);
+    }
   }
 
-  switch (state.type) {
+  // 🔥 Inferência pelo DOM quando não tem data-state
+  const type =
+    state?.type ||
+    (card.querySelector(".checklist-container") && "checklist") ||
+    (card.querySelector("#kanban-container") && "kanban") ||
+    (card.querySelector(".sticky-note") && "sticky") ||
+    (card.querySelector(".metric-value") && "metrics") ||
+    (card.querySelector(".timeline-container") && "timeline") ||
+    (card.querySelector(".tasks-container") && "progress") ||
+    (card.querySelector(".vscode-card") && "code");
+
+  if (!type) return;
+
+  switch (type) {
     case "checklist":
-      restoreChecklist(card, state);
+      if (typeof initChecklist === "function") initChecklist(card);
       break;
     case "kanban":
-      restoreKanban(card, state);
+      if (state) restoreKanban(card, state);
       break;
     case "sticky":
-      restoreSticky(card, state);
+      if (state) restoreSticky(card, state);
       break;
     case "metrics":
-      restoreMetrics(card, state);
+      if (state) restoreMetrics(card, state);
       break;
     case "timeline":
-      restoreTimeline(card, state);
+      if (state) restoreTimeline(card, state);
       break;
     case "progress":
-      restoreProgress(card, state);
+      if (state) restoreProgress(card, state);
       break;
     case "embed":
-      restoreEmbed(card, state);
+      if (state) restoreEmbed(card, state);
       break;
     default:
-      console.warn("Tipo de card desconhecido:", state.type);
+      console.warn("Tipo de card não restaurável sem state:", type);
   }
 }
 
@@ -252,266 +265,6 @@ function restoreEmbed(card, state) {
   });
 }
 
-function restoreChecklist(card, state) {
-  const container = card.querySelector(".checklist-container");
-  const progressFill = card.querySelector(".progress-fill");
-  const progressText = card.querySelector(".progress-text");
-  const counter = card.querySelector(".checklist-counter");
-  const searchInput = card.querySelector(".search-tasks");
-  const addBtn = card.querySelector(".add-task-btn");
-
-  let tasks = state.tasks;
-  let filterText = "";
-
-  function saveState() {
-    console.log("🟢 saveState chamado", new Date().toISOString());
-    card.dataset.state = JSON.stringify({ type: "checklist", tasks });
-    // pushState();
-  }
-
-  function render() {
-    const filtered = filterText
-      ? tasks.filter((t) =>
-          t.text.toLowerCase().includes(filterText.toLowerCase()),
-        )
-      : tasks;
-    container.innerHTML = "";
-    if (filtered.length === 0) {
-      container.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:20px 0; font-size:13px;">
-        ${filterText ? "🔍 Nenhuma tarefa encontrada" : "🎯 Nenhuma tarefa cadastrada"}
-      </div>`;
-    } else {
-      filtered.forEach((task, index) => {
-        const realIndex = tasks.indexOf(task);
-        const item = document.createElement("div");
-        item.className = "task-item";
-        item.style.cssText = `
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 10px;
-          margin-bottom: 4px;
-          border-radius: 8px;
-          background: ${task.done ? "rgba(74, 124, 247, 0.05)" : "transparent"};
-          border: 1px solid ${task.done ? "rgba(74, 124, 247, 0.1)" : "transparent"};
-          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-          opacity: ${task.done ? 0.7 : 1};
-          cursor: default;
-        `;
-
-        // Checkbox
-        const checkboxWrapper = document.createElement("div");
-        checkboxWrapper.style.cssText = `
-          position: relative;
-          width: 22px;
-          height: 22px;
-          flex-shrink: 0;
-          cursor: pointer;
-        `;
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = task.done;
-        checkbox.style.cssText = `
-          position: absolute;
-          opacity: 0;
-          width: 100%;
-          height: 100%;
-          cursor: pointer;
-          z-index: 2;
-        `;
-        checkbox.addEventListener("change", function () {
-          task.done = this.checked;
-          render();
-          saveState();
-        });
-        const customCheckbox = document.createElement("div");
-        customCheckbox.style.cssText = `
-          width: 22px;
-          height: 22px;
-          border-radius: 6px;
-          border: 2px solid ${task.done ? "#4a7cf7" : "var(--border-subtle)"};
-          background: ${task.done ? "#4a7cf7" : "transparent"};
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.3s ease;
-          pointer-events: none;
-        `;
-        customCheckbox.innerHTML = task.done
-          ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-               <polyline points="20 6 9 17 4 12"></polyline>
-             </svg>`
-          : "";
-        checkboxWrapper.appendChild(checkbox);
-        checkboxWrapper.appendChild(customCheckbox);
-
-        // Conteúdo
-        const contentWrapper = document.createElement("div");
-        contentWrapper.style.cssText = `flex:1; min-width:0;`;
-        const textSpan = document.createElement("div");
-        textSpan.contentEditable = true;
-        textSpan.textContent = task.text;
-        textSpan.style.cssText = `
-          font-size: 14px;
-          font-weight: ${task.done ? "400" : "500"};
-          color: ${task.done ? "var(--text-muted)" : "var(--text-primary)"};
-          text-decoration: ${task.done ? "line-through" : "none"};
-          background: transparent;
-          border: none;
-          padding: 2px 0;
-          outline: none;
-          cursor: text;
-          transition: all 0.3s;
-        `;
-        enableEditOnDoubleClick(textSpan, plainTextOnBlur);
-        let saveTimer; // declare uma variável para o timer (pode ser dentro do escopo da função restoreChecklist)
-
-        textSpan.addEventListener("input", function () {
-          clearTimeout(saveTimer);
-          task.text = this.textContent;
-          saveTimer = setTimeout(() => {
-            saveState();
-          }, 300);
-        });
-        const categoryTag = document.createElement("span");
-        categoryTag.textContent = task.category || "📌 Geral";
-        categoryTag.style.cssText = `
-          font-size: 10px;
-          color: var(--text-muted);
-          background: var(--bg-elevated);
-          padding: 2px 10px;
-          border-radius: 12px;
-          border: 1px solid var(--border-subtle);
-          margin-top: 2px;
-          display: inline-block;
-          cursor: pointer;
-        `;
-        categoryTag.title = "Clique para mudar a categoria";
-        categoryTag.addEventListener("click", function (e) {
-          e.stopPropagation();
-          const newCat = prompt(
-            "Digite a nova categoria:",
-            task.category || "",
-          );
-          if (newCat !== null && newCat.trim() !== "") {
-            task.category = newCat.trim();
-            render();
-            saveState();
-          }
-        });
-        contentWrapper.appendChild(textSpan);
-        contentWrapper.appendChild(categoryTag);
-
-        // Ações
-        const actionsDiv = document.createElement("div");
-        actionsDiv.style.cssText = `
-          display: flex;
-          gap: 2px;
-          align-items: center;
-          opacity: 0;
-          transition: opacity 0.2s;
-        `;
-        const moveUpBtn = document.createElement("button");
-        moveUpBtn.textContent = "↑";
-        moveUpBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px; transition:all 0.2s;`;
-        moveUpBtn.title = "Mover para cima";
-        moveUpBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          const idx = tasks.indexOf(task);
-          if (idx > 0) {
-            [tasks[idx], tasks[idx - 1]] = [tasks[idx - 1], tasks[idx]];
-            render();
-            saveState();
-          }
-        });
-        const moveDownBtn = document.createElement("button");
-        moveDownBtn.textContent = "↓";
-        moveDownBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px; transition:all 0.2s;`;
-        moveDownBtn.title = "Mover para baixo";
-        moveDownBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          const idx = tasks.indexOf(task);
-          if (idx < tasks.length - 1) {
-            [tasks[idx], tasks[idx + 1]] = [tasks[idx + 1], tasks[idx]];
-            render();
-            saveState();
-          }
-        });
-        const deleteBtn = document.createElement("button");
-        deleteBtn.textContent = "✕";
-        deleteBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:2px 6px; border-radius:4px; transition:all 0.2s;`;
-        deleteBtn.title = "Remover tarefa";
-        deleteBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          if (tasks.length <= 1) {
-            alert("Não é possível remover a última tarefa.");
-            return;
-          }
-          const idx = tasks.indexOf(task);
-          if (idx !== -1) {
-            tasks.splice(idx, 1);
-            render();
-            saveState();
-          }
-        });
-        actionsDiv.appendChild(moveUpBtn);
-        actionsDiv.appendChild(moveDownBtn);
-        actionsDiv.appendChild(deleteBtn);
-        item.addEventListener(
-          "mouseenter",
-          () => (actionsDiv.style.opacity = "1"),
-        );
-        item.addEventListener(
-          "mouseleave",
-          () => (actionsDiv.style.opacity = "0"),
-        );
-
-        item.appendChild(checkboxWrapper);
-        item.appendChild(contentWrapper);
-        item.appendChild(actionsDiv);
-        container.appendChild(item);
-      });
-    }
-    updateProgress();
-  }
-
-  function updateProgress() {
-    const total = tasks.length;
-    const done = tasks.filter((t) => t.done).length;
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-    if (progressFill) {
-      progressFill.style.width = pct + "%";
-      const color = pct === 100 ? "#4cd9a0" : pct > 50 ? "#4a7cf7" : "#ffc107";
-      progressFill.style.background = `linear-gradient(90deg, ${color}, ${color}dd)`;
-    }
-    if (progressText) progressText.textContent = pct + "%";
-    if (counter) counter.textContent = `${done}/${total} concluídos`;
-  }
-
-  // Eventos
-  if (searchInput) {
-    searchInput.addEventListener("input", function () {
-      filterText = this.value;
-      render();
-    });
-  }
-  if (addBtn) {
-    addBtn.addEventListener("click", function (e) {
-      e.stopPropagation();
-      tasks.push({
-        id: Date.now(),
-        text: `Nova tarefa ${tasks.length + 1}`,
-        done: false,
-        category: "📌 Geral",
-      });
-      render();
-      saveState();
-    });
-  }
-
-  render();
-  saveState();
-}
 function restoreKanban(card, state) {
   const container = card.querySelector("#kanban-container");
   const addColumnBtn = card.querySelector("#add-column-btn");
@@ -823,12 +576,34 @@ function collectState() {
       card.dataset.cardId = `card_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     }
 
+    // 🔥 Sincroniza valores de inputs antes de clonar
+    card
+      .querySelectorAll("input[type=text], input[type=number]")
+      .forEach((inp) => {
+        inp.setAttribute("value", inp.value);
+      });
+
     const clone = card.cloneNode(true);
     clone
       .querySelectorAll(
-        ".delete-btn, .duplicate-btn, .drag-handle, .resize-handle, .flow-port, .table-toolbar, .edit-toolbar",
+        ".delete-btn, .duplicate-btn, .drag-handle, .resize-handle, .flow-port, .edit-toolbar",
       )
       .forEach((el) => el.remove());
+
+    // 🔥 Limpa o guard que não deve ir pro servidor
+    clone
+      .querySelectorAll("[data-bound]")
+      .forEach((el) => el.removeAttribute("data-bound"));
+
+    clone
+      .querySelectorAll('[contenteditable="true"]')
+      .forEach((el) => el.removeAttribute("contenteditable"));
+
+    // 🔥 NOVO — limpa o guard que estava indo pro servidor
+    clone
+      .querySelectorAll("[data-bound]")
+      .forEach((el) => el.removeAttribute("data-bound"));
+
     clone
       .querySelectorAll('[contenteditable="true"]')
       .forEach((el) => el.removeAttribute("contenteditable"));
@@ -1658,36 +1433,52 @@ function restoreProgress(card, state) {
 
 function restoreCardState(card) {
   const raw = card.dataset.state;
-  if (!raw) return;
-  let state;
-  try {
-    state = JSON.parse(raw);
-  } catch (e) {
-    console.warn("Erro ao parsear state do card", e);
-    return;
+  let state = null;
+  if (raw) {
+    try {
+      state = JSON.parse(raw);
+    } catch (e) {
+      console.warn("Erro ao parsear state do card", e);
+    }
   }
 
-  switch (state.type) {
+  // 🔥 Inferência pelo DOM quando não tem data-state
+  const type =
+    state?.type ||
+    (card.querySelector(".checklist-container") && "checklist") ||
+    (card.querySelector("#kanban-container") && "kanban") ||
+    (card.querySelector(".sticky-note") && "sticky") ||
+    (card.querySelector(".metric-value") && "metrics") ||
+    (card.querySelector(".timeline-container") && "timeline") ||
+    (card.querySelector(".tasks-container") && "progress") ||
+    (card.querySelector(".vscode-card") && "code");
+
+  if (!type) return;
+
+  switch (type) {
     case "checklist":
-      restoreChecklist(card, state);
+      if (typeof initChecklist === "function") initChecklist(card);
       break;
     case "kanban":
-      restoreKanban(card, state);
+      if (state) restoreKanban(card, state);
       break;
     case "sticky":
-      restoreSticky(card, state);
+      if (state) restoreSticky(card, state);
       break;
     case "metrics":
-      restoreMetrics(card, state);
+      if (state) restoreMetrics(card, state);
       break;
     case "timeline":
-      restoreTimeline(card, state);
+      if (state) restoreTimeline(card, state);
       break;
     case "progress":
-      restoreProgress(card, state);
+      if (state) restoreProgress(card, state);
+      break;
+    case "embed":
+      if (state) restoreEmbed(card, state);
       break;
     default:
-      console.warn("Tipo de card desconhecido:", state.type);
+      console.warn("Tipo de card não restaurável sem state:", type);
   }
 }
 //===============================================

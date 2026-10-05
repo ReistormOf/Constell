@@ -4,6 +4,12 @@
 
 let selectedSize = "col-md-4";
 
+// 🔥 NOVO — marca elementos já ligados nesta sessão (não persiste em HTML)
+const __checklistBound = new WeakSet();
+// Shim: handler legado em Globals.js chama renderChecklist() global
+// O checklist atual usa render local dentro de initChecklist
+window.renderChecklist = window.renderChecklist || function () {};
+
 function addParagraph() {
   pushState(); // <-- SALVA ESTADO ANTES DE CRIAR
   const colDiv = document.createElement("div");
@@ -288,6 +294,373 @@ function addCommonButtons(card) {
   // Não faz nada – todos os botões extras foram removidos
 }
 
+// ============================================================
+// CHECKLIST — FACTORY (criação + restauração)
+// ============================================================
+function initChecklist(card, initialState) {
+  // ---- 1. ESTADO ----
+  // ---- 1. ESTADO ----
+  let state;
+  if (initialState) {
+    state = initialState;
+  } else if (card.dataset.state) {
+    try {
+      state = JSON.parse(card.dataset.state);
+    } catch {
+      state = { type: "checklist", tasks: [] };
+    }
+  } else {
+    // 🔥 FALLBACK: reconstrói o estado a partir do DOM já renderizado
+    const tasks = [];
+    card.querySelectorAll(".checklist-container .task-item").forEach((item) => {
+      const textEl = item.querySelector(
+        'div[contenteditable], div[style*="font-size: 14px"]',
+      );
+      const text = textEl ? textEl.textContent.trim() : "";
+      const catEl = item.querySelector('span[title*="categoria"]');
+      const category = catEl ? catEl.textContent.trim() : "📌 Geral";
+      tasks.push({
+        id: Date.now() + Math.floor(Math.random() * 1e6),
+        text,
+        done: false,
+        category,
+      });
+    });
+    state = { type: "checklist", tasks };
+    // grava imediatamente para que o próximo save não perca de novo
+    card.dataset.state = JSON.stringify(state);
+  }
+  if (!Array.isArray(state.tasks)) state.tasks = [];
+  // 🔥 Garante que todo checklist tenha um título
+  if (typeof state.title !== "string") {
+    state.title = "Checklist";
+  }
+  let filterText = "";
+
+  // 🔥 MARCA — essencial pro restore achar este card depois
+  card.dataset.cardType = "checklist";
+
+  // ---- 2. HTML (só se ainda não existir; restauração pula) ----
+  if (!card.querySelector(".checklist-container")) {
+    card.innerHTML = `
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+<input class="checklist-title" type="text" value="${state.title || "Checklist"}" 
+       placeholder="Nome do checklist..." 
+       style="flex:1; min-width:0; font-weight:600; color:var(--text-primary); font-size:16px; background:transparent; border:none; outline:none; padding:2px 4px; border-radius:6px; transition:background 0.2s;" />        <span class="checklist-counter" style="font-size:12px; color:var(--text-muted);">0/0 concluídos</span>
+      </div>
+      <div style="margin-bottom:12px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+          <span style="font-size:11px; color:var(--text-muted);">Progresso</span>
+          <span class="progress-text" style="font-size:12px; font-weight:600; color:#4a7cf7;">0%</span>
+        </div>
+        <div style="width:100%; height:6px; background:var(--bg-elevated); border-radius:4px; overflow:hidden; border:1px solid var(--border-subtle);">
+          <div class="progress-fill" style="width:0%; height:100%; background:linear-gradient(90deg, #4a7cf7, #6f42c1); border-radius:4px; transition:width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);"></div>
+        </div>
+      </div>
+      <div style="margin-bottom:10px;">
+        <input type="text" class="search-tasks" placeholder="🔍 Buscar tarefa..." style="width:100%; padding:6px 12px; background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:8px; color:var(--text-primary); font-size:13px; outline:none; transition:border-color 0.2s;">
+      </div>
+      <div class="checklist-container" style="display:flex; flex-direction:column; gap:2px; max-height:280px; overflow-y:auto; padding-right:2px;"></div>
+      <button class="add-task-btn" style="margin-top:10px; background:transparent; border:2px dashed var(--border-subtle); color:var(--text-muted); border-radius:8px; padding:8px; width:100%; cursor:pointer; font-size:13px; transition:all 0.2s; font-weight:500;">+ Adicionar tarefa</button>
+    `;
+  }
+  // 🔥 Injeta o input de título se ele não existir (cards salvos antes da feature)
+  if (!card.querySelector(".checklist-title")) {
+    const headerRow = card.firstElementChild; // o <div> do header
+    if (headerRow && headerRow.firstElementChild) {
+      const titleEl = document.createElement("input");
+      titleEl.type = "text";
+      titleEl.className = "checklist-title";
+      titleEl.value = state.title || "Checklist";
+      titleEl.placeholder = "Nome do checklist...";
+      titleEl.style.cssText =
+        "flex:1; min-width:0; font-weight:600; color:var(--text-primary); " +
+        "font-size:16px; background:transparent; border:none; outline:none; " +
+        "padding:2px 4px; border-radius:6px;";
+      headerRow.insertBefore(titleEl, headerRow.firstChild);
+    }
+  }
+
+  // ---- 3. HELPERS ----
+  function saveState() {
+    card.dataset.state = JSON.stringify(state);
+    pushState();
+  }
+
+  function updateProgress() {
+    const total = state.tasks.length;
+    const done = state.tasks.filter((t) => t.done).length;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    const fill = card.querySelector(".progress-fill");
+    const text = card.querySelector(".progress-text");
+    const cnt = card.querySelector(".checklist-counter");
+    if (fill) {
+      fill.style.width = pct + "%";
+      const color = pct === 100 ? "#4cd9a0" : pct > 50 ? "#4a7cf7" : "#ffc107";
+      fill.style.background = `linear-gradient(90deg, ${color}, ${color}dd)`;
+    }
+    if (text) text.textContent = `${pct}%`;
+    if (cnt) cnt.textContent = `${done}/${total} concluídos`;
+  }
+
+  function render() {
+    const container = card.querySelector(".checklist-container");
+    if (!container) return;
+    const filtered = filterText
+      ? state.tasks.filter((t) =>
+          t.text.toLowerCase().includes(filterText.toLowerCase()),
+        )
+      : state.tasks;
+
+    container.innerHTML = "";
+    if (filtered.length === 0) {
+      container.innerHTML = `<div style="text-align:center; color:var(--text-muted); padding:20px 0; font-size:13px;">${filterText ? "🔍 Nenhuma tarefa encontrada" : "🎯 Nenhuma tarefa cadastrada"}</div>`;
+    } else {
+      filtered.forEach((task) => {
+        const item = document.createElement("div");
+        item.className = "task-item";
+        item.style.cssText = `
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 10px;
+    margin-bottom: 4px;
+    border-radius: 8px;
+    background: ${task.done ? "rgba(74, 124, 247, 0.05)" : "transparent"};
+    border: 1px solid ${task.done ? "rgba(74, 124, 247, 0.1)" : "transparent"};
+    transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+    opacity: ${task.done ? 0.7 : 1};
+    cursor: default;
+  `;
+
+        // Checkbox
+        const checkboxWrapper = document.createElement("div");
+        checkboxWrapper.style.cssText = `
+    position: relative; width: 22px; height: 22px;
+    flex-shrink: 0; cursor: pointer;
+  `;
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = task.done;
+        checkbox.style.cssText = `
+    position: absolute; opacity: 0;
+    width: 100%; height: 100%;
+    cursor: pointer; z-index: 2;
+  `;
+        checkbox.addEventListener("change", function () {
+          task.done = this.checked;
+          render();
+          saveState();
+        });
+        const customCheckbox = document.createElement("div");
+        customCheckbox.style.cssText = `
+    width: 22px; height: 22px;
+    border-radius: 6px;
+    border: 2px solid ${task.done ? "#4a7cf7" : "var(--border-subtle)"};
+    background: ${task.done ? "#4a7cf7" : "transparent"};
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.3s ease; pointer-events: none;
+  `;
+        customCheckbox.innerHTML = task.done
+          ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
+          : "";
+        checkboxWrapper.appendChild(checkbox);
+        checkboxWrapper.appendChild(customCheckbox);
+
+        // Conteúdo
+        const contentWrapper = document.createElement("div");
+        contentWrapper.style.cssText = `flex: 1; min-width: 0;`;
+
+        const textSpan = document.createElement("div");
+        textSpan.contentEditable = true;
+        textSpan.textContent = task.text;
+        textSpan.style.cssText = `
+    font-size: 14px;
+    font-weight: ${task.done ? "400" : "500"};
+    color: ${task.done ? "var(--text-muted)" : "var(--text-primary)"};
+    text-decoration: ${task.done ? "line-through" : "none"};
+    background: transparent; border: none; padding: 2px 0;
+    outline: none; cursor: text; transition: all 0.3s;
+  `;
+        let saveTimer;
+        textSpan.addEventListener("input", function () {
+          clearTimeout(saveTimer);
+          task.text = this.textContent;
+          saveTimer = setTimeout(saveState, 300);
+        });
+
+        const categoryTag = document.createElement("span");
+        categoryTag.textContent = task.category || "📌 Geral";
+        categoryTag.style.cssText = `
+    font-size: 10px; color: var(--text-muted);
+    background: var(--bg-elevated); padding: 2px 10px;
+    border-radius: 12px; border: 1px solid var(--border-subtle);
+    margin-top: 2px; display: inline-block; cursor: pointer;
+  `;
+        categoryTag.title = "Clique para mudar a categoria";
+        categoryTag.addEventListener("click", function (e) {
+          e.stopPropagation();
+          const newCat = prompt(
+            "Digite a nova categoria:",
+            task.category || "",
+          );
+          if (newCat !== null && newCat.trim() !== "") {
+            task.category = newCat.trim();
+            render();
+            saveState();
+          }
+        });
+
+        contentWrapper.appendChild(textSpan);
+        contentWrapper.appendChild(categoryTag);
+
+        // Ações (↑ ↓ ✕)
+        const actionsDiv = document.createElement("div");
+        actionsDiv.style.cssText = `
+    display: flex; gap: 2px; align-items: center;
+    opacity: 0; transition: opacity 0.2s;
+  `;
+
+        const moveUpBtn = document.createElement("button");
+        moveUpBtn.textContent = "↑";
+        moveUpBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px;`;
+        moveUpBtn.title = "Mover para cima";
+        moveUpBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          const idx = state.tasks.indexOf(task);
+          if (idx > 0) {
+            [state.tasks[idx], state.tasks[idx - 1]] = [
+              state.tasks[idx - 1],
+              state.tasks[idx],
+            ];
+            render();
+            saveState();
+          }
+        });
+
+        const moveDownBtn = document.createElement("button");
+        moveDownBtn.textContent = "↓";
+        moveDownBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px;`;
+        moveDownBtn.title = "Mover para baixo";
+        moveDownBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          const idx = state.tasks.indexOf(task);
+          if (idx < state.tasks.length - 1) {
+            [state.tasks[idx], state.tasks[idx + 1]] = [
+              state.tasks[idx + 1],
+              state.tasks[idx],
+            ];
+            render();
+            saveState();
+          }
+        });
+
+        const deleteBtn = document.createElement("button");
+        deleteBtn.textContent = "✕";
+        deleteBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:2px 6px; border-radius:4px;`;
+        deleteBtn.title = "Remover tarefa";
+        deleteBtn.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (state.tasks.length <= 1) {
+            alert("Não é possível remover a última tarefa.");
+            return;
+          }
+          const idx = state.tasks.indexOf(task);
+          if (idx !== -1) {
+            state.tasks.splice(idx, 1);
+            render();
+            saveState();
+          }
+        });
+
+        actionsDiv.appendChild(moveUpBtn);
+        actionsDiv.appendChild(moveDownBtn);
+        actionsDiv.appendChild(deleteBtn);
+
+        item.addEventListener(
+          "mouseenter",
+          () => (actionsDiv.style.opacity = "1"),
+        );
+        item.addEventListener(
+          "mouseleave",
+          () => (actionsDiv.style.opacity = "0"),
+        );
+
+        item.appendChild(checkboxWrapper);
+        item.appendChild(contentWrapper);
+        item.appendChild(actionsDiv);
+        container.appendChild(item);
+      });
+    }
+    updateProgress();
+  }
+
+  // ---- 4. EVENTOS (guard contra dupla ligação) ----
+  const searchInput = card.querySelector(".search-tasks");
+  if (searchInput && !__checklistBound.has(searchInput)) {
+    __checklistBound.add(searchInput);
+    searchInput.addEventListener("input", function () {
+      filterText = this.value;
+      render();
+    });
+  }
+
+  const addBtn = card.querySelector(".add-task-btn");
+  if (addBtn && !__checklistBound.has(addBtn)) {
+    __checklistBound.add(addBtn);
+    addBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      state.tasks.push({
+        id: Date.now(),
+        text: `Nova tarefa ${state.tasks.length + 1}`,
+        done: false,
+        category: "📌 Geral",
+      });
+      render();
+      saveState();
+      const c = card.querySelector(".checklist-container");
+      if (c) c.scrollTop = c.scrollHeight;
+    });
+  }
+
+  const titleInput = card.querySelector(".checklist-title"); // ← SÓ AQUI, uma vez
+  if (titleInput) {
+    // 🔥 Sincroniza o valor visível com o estado (restore)
+    titleInput.value = state.title;
+    titleInput.setAttribute("value", state.title);
+
+    // 🔥 Liga os eventos apenas uma vez por elemento
+    if (!__checklistBound.has(titleInput)) {
+      __checklistBound.add(titleInput);
+
+      titleInput.addEventListener("input", function () {
+        state.title = this.value;
+        clearTimeout(titleInput._saveTimer);
+        titleInput._saveTimer = setTimeout(saveState, 400);
+      });
+
+      titleInput.addEventListener("blur", function () {
+        state.title = this.value;
+        saveState();
+      });
+
+      titleInput.addEventListener("keydown", function (e) {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          this.blur();
+        }
+      });
+    }
+  }
+  // ---- 5. INIT ----
+  render();
+  if (initialState) {
+    // Só grava o JSON no dataset; o pushState do wrapper já registrou o estado "antes"
+    card.dataset.state = JSON.stringify(state);
+  }
+}
+
+// Wrapper de criação (o que o botão chama)
 function addChecklist() {
   pushState();
   const card = document.createElement("div");
@@ -305,8 +678,7 @@ function addChecklist() {
   card.style.border = "1px solid var(--border-subtle)";
   card.style.transition = "all 0.3s ease";
 
-  // ===== ESTADO =====
-  let state = {
+  const initialState = {
     type: "checklist",
     tasks: [
       {
@@ -341,296 +713,7 @@ function addChecklist() {
       },
     ],
   };
-  let filterText = "";
 
-  // ===== FUNÇÃO SALVAR =====
-  function saveState() {
-    card.dataset.state = JSON.stringify(state);
-    pushState();
-  }
-
-  // ===== RENDER =====
-  function render() {
-    const container = card.querySelector(".checklist-container");
-    const progressFill = card.querySelector(".progress-fill");
-    const progressText = card.querySelector(".progress-text");
-    const counter = card.querySelector(".checklist-counter");
-    if (!container) return;
-
-    const filtered = filterText
-      ? state.tasks.filter((t) =>
-          t.text.toLowerCase().includes(filterText.toLowerCase()),
-        )
-      : state.tasks;
-
-    container.innerHTML = "";
-    if (filtered.length === 0) {
-      container.innerHTML = `
-        <div style="text-align:center; color:var(--text-muted); padding:20px 0; font-size:13px;">
-          ${filterText ? "🔍 Nenhuma tarefa encontrada" : "🎯 Nenhuma tarefa cadastrada"}
-        </div>
-      `;
-    } else {
-      filtered.forEach((task, index) => {
-        const realIndex = state.tasks.indexOf(task);
-        const item = document.createElement("div");
-        item.className = "task-item";
-        item.style.cssText = `
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          padding: 8px 10px;
-          margin-bottom: 4px;
-          border-radius: 8px;
-          background: ${task.done ? "rgba(74, 124, 247, 0.05)" : "transparent"};
-          border: 1px solid ${task.done ? "rgba(74, 124, 247, 0.1)" : "transparent"};
-          transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-          opacity: ${task.done ? 0.7 : 1};
-          cursor: default;
-        `;
-
-        // Checkbox
-        const checkboxWrapper = document.createElement("div");
-        checkboxWrapper.style.cssText = `
-          position: relative;
-          width: 22px;
-          height: 22px;
-          flex-shrink: 0;
-          cursor: pointer;
-        `;
-        const checkbox = document.createElement("input");
-        checkbox.type = "checkbox";
-        checkbox.checked = task.done;
-        checkbox.style.cssText = `
-          position: absolute;
-          opacity: 0;
-          width: 100%;
-          height: 100%;
-          cursor: pointer;
-          z-index: 2;
-        `;
-        checkbox.addEventListener("change", function () {
-          task.done = this.checked;
-          render();
-          saveState();
-        });
-        const customCheckbox = document.createElement("div");
-        customCheckbox.style.cssText = `
-          width: 22px;
-          height: 22px;
-          border-radius: 6px;
-          border: 2px solid ${task.done ? "#4a7cf7" : "var(--border-subtle)"};
-          background: ${task.done ? "#4a7cf7" : "transparent"};
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.3s ease;
-          pointer-events: none;
-        `;
-        customCheckbox.innerHTML = task.done
-          ? `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>`
-          : "";
-        checkboxWrapper.appendChild(checkbox);
-        checkboxWrapper.appendChild(customCheckbox);
-
-        // Conteúdo
-        const contentWrapper = document.createElement("div");
-        contentWrapper.style.cssText = `flex: 1; min-width: 0;`;
-        const textSpan = document.createElement("div");
-        textSpan.contentEditable = true;
-        textSpan.textContent = task.text;
-        textSpan.style.cssText = `
-          font-size: 14px;
-          font-weight: ${task.done ? "400" : "500"};
-          color: ${task.done ? "var(--text-muted)" : "var(--text-primary)"};
-          text-decoration: ${task.done ? "line-through" : "none"};
-          background: transparent;
-          border: none;
-          padding: 2px 0;
-          outline: none;
-          cursor: text;
-          transition: all 0.3s;
-        `;
-        enableEditOnDoubleClick(textSpan, plainTextOnBlur);
-        textSpan.addEventListener("input", function () {
-          task.text = this.textContent;
-          saveState();
-        });
-
-        const categoryTag = document.createElement("span");
-        categoryTag.textContent = task.category || "📌 Geral";
-        categoryTag.style.cssText = `
-          font-size: 10px;
-          color: var(--text-muted);
-          background: var(--bg-elevated);
-          padding: 2px 10px;
-          border-radius: 12px;
-          border: 1px solid var(--border-subtle);
-          margin-top: 2px;
-          display: inline-block;
-          cursor: pointer;
-        `;
-        categoryTag.title = "Clique para mudar a categoria";
-        categoryTag.addEventListener("click", function (e) {
-          e.stopPropagation();
-          const newCat = prompt(
-            "Digite a nova categoria (ex: 📋 Planejamento):",
-            task.category || "",
-          );
-          if (newCat !== null && newCat.trim() !== "") {
-            task.category = newCat.trim();
-            render();
-            saveState();
-          }
-        });
-        contentWrapper.appendChild(textSpan);
-        contentWrapper.appendChild(categoryTag);
-
-        // Ações
-        const actionsDiv = document.createElement("div");
-        actionsDiv.style.cssText = `
-          display: flex;
-          gap: 2px;
-          align-items: center;
-          opacity: 0;
-          transition: opacity 0.2s;
-        `;
-        const moveUpBtn = document.createElement("button");
-        moveUpBtn.textContent = "↑";
-        moveUpBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px; transition:all 0.2s;`;
-        moveUpBtn.title = "Mover para cima";
-        moveUpBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          const idx = state.tasks.indexOf(task);
-          if (idx > 0) {
-            [state.tasks[idx], state.tasks[idx - 1]] = [
-              state.tasks[idx - 1],
-              state.tasks[idx],
-            ];
-            render();
-            saveState();
-          }
-        });
-        const moveDownBtn = document.createElement("button");
-        moveDownBtn.textContent = "↓";
-        moveDownBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:14px; padding:2px 4px; border-radius:4px; transition:all 0.2s;`;
-        moveDownBtn.title = "Mover para baixo";
-        moveDownBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          const idx = state.tasks.indexOf(task);
-          if (idx < state.tasks.length - 1) {
-            [state.tasks[idx], state.tasks[idx + 1]] = [
-              state.tasks[idx + 1],
-              state.tasks[idx],
-            ];
-            render();
-            saveState();
-          }
-        });
-        const deleteBtn = document.createElement("button");
-        deleteBtn.textContent = "✕";
-        deleteBtn.style.cssText = `background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:13px; padding:2px 6px; border-radius:4px; transition:all 0.2s;`;
-        deleteBtn.title = "Remover tarefa";
-        deleteBtn.addEventListener("click", function (e) {
-          e.stopPropagation();
-          if (state.tasks.length <= 1) {
-            alert("Não é possível remover a última tarefa.");
-            return;
-          }
-          const idx = state.tasks.indexOf(task);
-          if (idx !== -1) {
-            state.tasks.splice(idx, 1);
-            render();
-            saveState();
-          }
-        });
-        actionsDiv.appendChild(moveUpBtn);
-        actionsDiv.appendChild(moveDownBtn);
-        actionsDiv.appendChild(deleteBtn);
-        item.addEventListener(
-          "mouseenter",
-          () => (actionsDiv.style.opacity = "1"),
-        );
-        item.addEventListener(
-          "mouseleave",
-          () => (actionsDiv.style.opacity = "0"),
-        );
-
-        item.appendChild(checkboxWrapper);
-        item.appendChild(contentWrapper);
-        item.appendChild(actionsDiv);
-        container.appendChild(item);
-      });
-    }
-    updateProgress();
-  }
-
-  function updateProgress() {
-    const total = state.tasks.length;
-    const done = state.tasks.filter((t) => t.done).length;
-    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
-    const progressFill = card.querySelector(".progress-fill");
-    const progressText = card.querySelector(".progress-text");
-    const counter = card.querySelector(".checklist-counter");
-    if (progressFill) {
-      progressFill.style.width = pct + "%";
-      const color = pct === 100 ? "#4cd9a0" : pct > 50 ? "#4a7cf7" : "#ffc107";
-      progressFill.style.background = `linear-gradient(90deg, ${color}, ${color}dd)`;
-    }
-    if (progressText) progressText.textContent = `${pct}%`;
-    if (counter) counter.textContent = `${done}/${total} concluídos`;
-  }
-
-  // ===== HTML =====
-  card.innerHTML = `
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-      <span style="font-weight:600; color:var(--text-primary); font-size:16px;">✅ Checklist</span>
-      <span class="checklist-counter" style="font-size:12px; color:var(--text-muted);">0/0 concluídos</span>
-    </div>
-    <div style="margin-bottom:12px;">
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
-        <span style="font-size:11px; color:var(--text-muted);">Progresso</span>
-        <span class="progress-text" style="font-size:12px; font-weight:600; color:#4a7cf7;">0%</span>
-      </div>
-      <div style="width:100%; height:6px; background:var(--bg-elevated); border-radius:4px; overflow:hidden; border:1px solid var(--border-subtle);">
-        <div class="progress-fill" style="width:0%; height:100%; background:linear-gradient(90deg, #4a7cf7, #6f42c1); border-radius:4px; transition:width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);"></div>
-      </div>
-    </div>
-    <div style="margin-bottom:10px;">
-      <input type="text" class="search-tasks" placeholder="🔍 Buscar tarefa..." style="width:100%; padding:6px 12px; background:var(--bg-elevated); border:1px solid var(--border-subtle); border-radius:8px; color:var(--text-primary); font-size:13px; outline:none; transition:border-color 0.2s;">
-    </div>
-    <div class="checklist-container" style="display:flex; flex-direction:column; gap:2px; max-height:280px; overflow-y:auto; padding-right:2px;"></div>
-    <button class="add-task-btn" style="margin-top:10px; background:transparent; border:2px dashed var(--border-subtle); color:var(--text-muted); border-radius:8px; padding:8px; width:100%; cursor:pointer; font-size:13px; transition:all 0.2s; font-weight:500;">
-      + Adicionar tarefa
-    </button>
-  `;
-
-  // ===== EVENTOS =====
-  const searchInput = card.querySelector(".search-tasks");
-  searchInput.addEventListener("input", function () {
-    filterText = this.value;
-    render();
-  });
-
-  const addBtn = card.querySelector(".add-task-btn");
-  addBtn.addEventListener("click", function (e) {
-    e.stopPropagation();
-    state.tasks.push({
-      id: Date.now(),
-      text: `Nova tarefa ${state.tasks.length + 1}`,
-      done: false,
-      category: "📌 Geral",
-    });
-    render();
-    saveState();
-    const container = card.querySelector(".checklist-container");
-    if (container) container.scrollTop = container.scrollHeight;
-  });
-
-  render();
-  saveState(); // <-- GRAVA ESTADO INICIAL
-
-  // ===== ELEMENTOS COMUNS =====
   addDeleteButton(card);
   addDragHandle(card);
   card.dataset.cardId = `card_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
@@ -639,6 +722,9 @@ function addChecklist() {
   document.getElementById("cards-container").appendChild(card);
   card.classList.add("float-in");
   setTimeout(() => card.classList.remove("float-in"), 700);
+
+  initChecklist(card, initialState); // 🔥 passa o estado inicial
+
   initializeCard(card);
   updateContainerHeight();
 }
