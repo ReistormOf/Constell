@@ -135,14 +135,16 @@ function updateEditingState() {
   // Verifica se o elemento ativo ou qualquer ancestral é contenteditable
   let isActiveEditable = false;
   if (active) {
-    if (active.contentEditable === "true" || active.contentEditable === "") {
+    const ce = active.contentEditable;
+    if (ce === "true" || ce === "plaintext-only" || ce === "") {
       isActiveEditable = true;
     } else if (active.closest) {
-      const parent = active.closest('[contenteditable="true"]');
+      const parent = active.closest(
+        '[contenteditable="true"], [contenteditable="plaintext-only"]',
+      );
       if (parent) isActiveEditable = true;
     }
   }
-
   // Se o foco estiver no body ou html, NÃO está editando
   if (active === document.body || active === document.documentElement) {
     isActiveEditable = false;
@@ -243,47 +245,55 @@ function createLassoElement() {
 }
 
 function getVisiblePosition(width, height) {
-    const container = document.getElementById("cards-container");
-    if (!container) return { left: 20, top: 20 };
+  const container = document.getElementById("cards-container");
+  if (!container) return { left: 20, top: 20 };
 
-    const style = window.getComputedStyle(container);
-    const transform = style.transform || 'matrix(1,0,0,1,0,0)';
-    const matrix = new DOMMatrix(transform);
-    const inverse = matrix.inverse();
+  const style = window.getComputedStyle(container);
+  const transform = style.transform || "matrix(1,0,0,1,0,0)";
+  const matrix = new DOMMatrix(transform);
+  const inverse = matrix.inverse();
 
-    const centerX = window.innerWidth / 2;
-    const centerY = window.innerHeight / 2;
+  const centerX = window.innerWidth / 2;
+  const centerY = window.innerHeight / 2;
 
-    const targetScreenX = centerX - width / 2;
-    const targetScreenY = centerY - height / 2;
+  const targetScreenX = centerX - width / 2;
+  const targetScreenY = centerY - height / 2;
 
-    const localPoint = inverse.transformPoint({ x: targetScreenX, y: targetScreenY });
+  const localPoint = inverse.transformPoint({
+    x: targetScreenX,
+    y: targetScreenY,
+  });
 
-    let left = Math.round(localPoint.x);
-    let top = Math.round(localPoint.y);
+  let left = Math.round(localPoint.x);
+  let top = Math.round(localPoint.y);
 
-    // 🔥 DESLOCAR PARA A ESQUERDA (subtrai 80px)
-    left = left - 80;
+  // 🔥 DESLOCAR PARA A ESQUERDA (subtrai 80px)
+  left = left - 80;
 
-    // Clamp para não ultrapassar as bordas do container
-    const maxLeft = container.clientWidth - width;
-    const maxTop = container.clientHeight - height;
-    left = Math.max(0, Math.min(left, maxLeft));
-    top = Math.max(0, Math.min(top, maxTop));
+  // Clamp para não ultrapassar as bordas do container
+  const maxLeft = container.clientWidth - width;
+  const maxTop = container.clientHeight - height;
+  left = Math.max(0, Math.min(left, maxLeft));
+  top = Math.max(0, Math.min(top, maxTop));
 
-    // Fallback: se ainda estiver fora, centraliza no container
-    if (left < 0 || top < 0 || left + width > container.clientWidth || top + height > container.clientHeight) {
-        left = (container.clientWidth - width) / 2;
-        top = (container.clientHeight - height) / 2;
-        left = Math.round(left / 20) * 20;
-        top = Math.round(top / 20) * 20;
-        return { left, top };
-    }
-
+  // Fallback: se ainda estiver fora, centraliza no container
+  if (
+    left < 0 ||
+    top < 0 ||
+    left + width > container.clientWidth ||
+    top + height > container.clientHeight
+  ) {
+    left = (container.clientWidth - width) / 2;
+    top = (container.clientHeight - height) / 2;
     left = Math.round(left / 20) * 20;
     top = Math.round(top / 20) * 20;
-
     return { left, top };
+  }
+
+  left = Math.round(left / 20) * 20;
+  top = Math.round(top / 20) * 20;
+
+  return { left, top };
 }
 // ============================================================
 // CORREÇÃO DE TEXTO (LanguageTool API)

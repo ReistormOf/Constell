@@ -13,54 +13,7 @@ document.addEventListener("keydown", function (e) {
 
   // ---- SE ESTIVER EDITANDO TEXTO, DEIXA O NAVEGADOR LIDAR COM Ctrl+C/V ----
   if (isEditable) {
-    // Ctrl+C e Ctrl+V não são interceptados, navegador faz copy/paste de texto
-    if (e.ctrlKey && (e.key === "c" || e.key === "v")) {
-      return;
-    }
-    // Ctrl+B/I/U/S ainda funcionam para formatação
-    switch (e.key.toLowerCase()) {
-      case "b":
-        if (e.ctrlKey) {
-          e.preventDefault();
-          if (window.getSelection().toString().length > 0) {
-            document.execCommand("bold");
-          } else {
-            toggleInlineStyle(active, "strong");
-          }
-        }
-        break;
-      case "i":
-        if (e.ctrlKey) {
-          e.preventDefault();
-          if (window.getSelection().toString().length > 0) {
-            document.execCommand("italic");
-          } else {
-            toggleInlineStyle(active, "em");
-          }
-        }
-        break;
-      case "u":
-        if (e.ctrlKey) {
-          e.preventDefault();
-          if (window.getSelection().toString().length > 0) {
-            document.execCommand("underline");
-          } else {
-            toggleInlineStyle(active, "u");
-          }
-        }
-        break;
-      case "s":
-        if (e.ctrlKey && e.altKey) {
-          e.preventDefault();
-          if (window.getSelection().toString().length > 0) {
-            document.execCommand("strikeThrough");
-          } else {
-            toggleInlineStyle(active, "s");
-          }
-        }
-        break;
-    }
-    return; // sai do listener após tratar os atalhos de formatação
+    return;
   }
 
   // ---- Ctrl+C (copiar cards selecionados) ----

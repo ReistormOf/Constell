@@ -53,17 +53,45 @@ async function saveFullState() {
 
   window._savingFullState = true;
 
-  try {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
+  const snapshotMateria = currentMateria;
+  const snapshotTopico = currentTopico;
+  const snapshotPagina = currentPagina;
 
-    const container = document.getElementById("cards-container");
-    if (!container) return;
+  const container = document.getElementById("cards-container");
+  const cardsData = [];
 
-    // ---- 1. Extrai os cards ----
+  if (container) {
     const items = container.querySelectorAll(".editable-item");
-    const cardsData = [];
-
     items.forEach((card, index) => {
+      // 🔥 CONVERTE \n em <br> ANTES de clonar
+      card
+        .querySelectorAll(
+          '[contenteditable="plaintext-only"], [contenteditable="true"]',
+        )
+        .forEach((el) => {
+          const walker = document.createTreeWalker(
+            el,
+            NodeFilter.SHOW_TEXT,
+            null,
+            false,
+          );
+          const nodes = [];
+          let node;
+          while ((node = walker.nextNode())) nodes.push(node);
+          nodes.forEach((textNode) => {
+            const text = textNode.textContent;
+            if (!text.includes("\n")) return;
+            const fragment = document.createDocumentFragment();
+            const parts = text.split("\n");
+            parts.forEach((part, i) => {
+              if (part) fragment.appendChild(document.createTextNode(part));
+              if (i < parts.length - 1)
+                fragment.appendChild(document.createElement("br"));
+            });
+            textNode.parentNode.replaceChild(fragment, textNode);
+          });
+        });
+
       const clone = card.cloneNode(true);
       clone
         .querySelectorAll(
@@ -75,7 +103,7 @@ async function saveFullState() {
         .forEach((el) => el.removeAttribute("contenteditable"));
 
       cardsData.push({
-        cardId: card.dataset.cardId || null, // <-- CORRIGIDO: cardId
+        cardId: card.dataset.cardId || null,
         html: clone.outerHTML,
         left: card.style.left,
         top: card.style.top,
@@ -86,80 +114,87 @@ async function saveFullState() {
         state: card.dataset.state || null,
       });
     });
+  }
 
-    // ---- 2. Extrai as conexões DIRETAMENTE DO SVG (com IDs) ----
-    const svg = document.getElementById("flowchart-svg");
-    const connectionsData = [];
+  const svg = document.getElementById("flowchart-svg");
+  const connectionsData = [];
 
-    if (svg) {
-      const pathElements = svg.querySelectorAll("path.connection-line");
-      const allCards = Array.from(container.querySelectorAll(".editable-item"));
+  if (svg && container) {
+    const pathElements = svg.querySelectorAll("path.connection-line");
+    const allCards = Array.from(container.querySelectorAll(".editable-item"));
 
-      pathElements.forEach((path) => {
-        const fromId = path.dataset.fromId;
-        const toId = path.dataset.toId;
-        const fromPos = path.dataset.fromPos || "right";
-        const toPos = path.dataset.toPos || "left";
+    pathElements.forEach((path) => {
+      const fromId = path.dataset.fromId;
+      const toId = path.dataset.toId;
+      const fromPos = path.dataset.fromPos || "right";
+      const toPos = path.dataset.toPos || "left";
+      if (!fromId || !toId) return;
 
-        if (!fromId || !toId) {
-          console.warn("⚠️ Conexão sem IDs (ignorada):", path);
-          return;
-        }
-
-        // Encontra índices atuais (para fallback)
-        let fromIndex = -1;
-        let toIndex = -1;
-        allCards.forEach((card, idx) => {
-          const cardId = card.dataset.cardId || card.id || "";
-          if (cardId === fromId) fromIndex = idx;
-          if (cardId === toId) toIndex = idx;
-        });
-
-        connectionsData.push({
-          fromId: fromId,
-          fromIndex: fromIndex,
-          fromPos: fromPos,
-          toId: toId,
-          toIndex: toIndex,
-          toPos: toPos,
-        });
+      let fromIndex = -1;
+      let toIndex = -1;
+      allCards.forEach((card, idx) => {
+        const cardId = card.dataset.cardId || card.id || "";
+        if (cardId === fromId) fromIndex = idx;
+        if (cardId === toId) toIndex = idx;
       });
 
-      console.log(`🔗 Extraídas ${connectionsData.length} conexões do SVG`);
-    } else {
-      console.warn("⚠️ SVG não encontrado – nenhuma conexão será salva");
-    }
+      connectionsData.push({
+        fromId,
+        fromIndex,
+        fromPos,
+        toId,
+        toIndex,
+        toPos,
+      });
+    });
+  }
 
-    // ---- 3. Atualiza dadosCompletos ----
-    if (!dadosCompletos.materias[currentMateria]) {
-      dadosCompletos.materias[currentMateria] = { topicos: {} };
-    }
-    if (!dadosCompletos.materias[currentMateria].topicos[currentTopico]) {
-      dadosCompletos.materias[currentMateria].topicos[currentTopico] = {
-        paginas: [],
+  try {
+    if (snapshotMateria && snapshotTopico) {
+      if (!dadosCompletos.materias[snapshotMateria]) {
+        dadosCompletos.materias[snapshotMateria] = { topicos: {} };
+      }
+      if (!dadosCompletos.materias[snapshotMateria].topicos[snapshotTopico]) {
+        dadosCompletos.materias[snapshotMateria].topicos[snapshotTopico] = {
+          paginas: [],
+        };
+      }
+      const paginas =
+        dadosCompletos.materias[snapshotMateria].topicos[snapshotTopico]
+          .paginas;
+      paginas[snapshotPagina] = {
+        public_id: paginas[snapshotPagina]?.public_id || null,
+        is_public: paginas[snapshotPagina]?.is_public || 0,
+        titulo:
+          paginas[snapshotPagina]?.titulo || `Página ${snapshotPagina + 1}`,
+        cards: cardsData,
+        connections: connectionsData,
       };
     }
-    const paginas =
-      dadosCompletos.materias[currentMateria].topicos[currentTopico].paginas;
-    paginas[currentPagina] = {
-      public_id: paginas[currentPagina]?.public_id || null,
-      is_public: paginas[currentPagina]?.is_public || 0,
-      titulo: paginas[currentPagina]?.titulo || `Página ${currentPagina + 1}`,
-      cards: cardsData,
-      connections: connectionsData,
-    };
-    dadosCompletos.page = {
-      cards: cardsData,
-      connections: connectionsData,
-      is_public: paginas[currentPagina]?.is_public || 0,
-    };
-    dadosCompletos.current = {
-      materia: currentMateria,
-      topico: currentTopico,
-      pagina: currentPagina,
-    };
 
-    // ---- 4. Envia para o servidor ----
+    const navegouDuranteSave =
+      currentMateria !== snapshotMateria ||
+      currentTopico !== snapshotTopico ||
+      currentPagina !== snapshotPagina;
+
+    if (!navegouDuranteSave) {
+      dadosCompletos.page = {
+        cards: cardsData,
+        connections: connectionsData,
+        is_public:
+          dadosCompletos.materias[snapshotMateria]?.topicos[snapshotTopico]
+            ?.paginas[snapshotPagina]?.is_public || 0,
+      };
+      dadosCompletos.current = {
+        caderno: dadosCompletos.current?.caderno || "Geral",
+        materia: snapshotMateria || "",
+        topico: snapshotTopico || "",
+        pagina: snapshotPagina || 0,
+      };
+    }
+
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
     const response = await fetch("api.php?action=save", {
       method: "POST",
       headers: {
@@ -211,6 +246,25 @@ async function loadFullState() {
       if (result.success && result.data) {
         dadosCompletos = result.data;
 
+        // 🔥 NORMALIZAÇÃO: se o servidor devolveu formato antigo, converte
+        if (!dadosCompletos.cadernos) {
+          dadosCompletos.cadernos = {
+            Geral: { materias: Object.keys(dadosCompletos.materias || {}) },
+          };
+        }
+        if (!dadosCompletos.current) {
+          dadosCompletos.current = {
+            caderno: "Geral",
+            materia: "",
+            topico: "",
+            pagina: 0,
+          };
+        }
+        if (!dadosCompletos.current.caderno) {
+          dadosCompletos.current.caderno =
+            Object.keys(dadosCompletos.cadernos)[0] || "Geral";
+        }
+
         // 🔥 Captura IDs e public_id da página atual
         // Dentro de loadFullState, após definir window.currentPublicId
         const pageData = dadosCompletos.page || { cards: [], connections: [] };
@@ -241,6 +295,7 @@ async function loadFullState() {
         }
 
         updateMenuUI();
+        renderNavTree();
         localStorage.setItem("devstudio_data", JSON.stringify(dadosCompletos));
         return true;
       }
@@ -271,9 +326,11 @@ async function loadFullState() {
     // Inicializa vazio
     dadosCompletos = {
       materias: {},
-      current: { materia: "", topico: "", pagina: 0 },
+      cadernos: { Geral: { materias: [] } },
+      current: { caderno: "Geral", materia: "", topico: "", pagina: 0 },
       page: { cards: [], connections: [] },
     };
+
     window.currentPublicId = null;
     localStorage.setItem("devstudio_data", JSON.stringify(dadosCompletos));
     return true;
@@ -350,6 +407,9 @@ function restorePage() {
 
   updateMenuUI();
   updateContainerHeight();
+  if (typeof spellCheckAllCards === "function") {
+    setTimeout(spellCheckAllCards, 1500);
+  }
 }
 
 // Função auxiliar para mostrar mensagem sem destruir o SVG
@@ -375,23 +435,31 @@ function showEmptyMessage(container, text) {
 }
 
 async function goToMateria(materia) {
-  if (!materia || !dadosCompletos.materias[materia]) {
-    console.warn("Matéria não encontrada:", materia);
-    return;
-  }
-  await saveFullState();
+  if (!materia || !dadosCompletos.materias[materia]) return;
+
+  // 🔥 Fire-and-forget: extração é síncrona, captura os cards atuais antes do DOM mudar
+  saveFullState().catch(console.error);
+
+  // Navegação IMEDIATA
   currentMateria = materia;
   const topicos = Object.keys(dadosCompletos.materias[materia].topicos);
+  currentTopico = topicos.length === 0 ? "Tópico 1" : topicos[0];
   if (topicos.length === 0) {
     dadosCompletos.materias[materia].topicos["Tópico 1"] = { paginas: [] };
-    currentTopico = "Tópico 1";
-  } else {
-    currentTopico = topicos[0];
   }
   currentPagina = 0;
-  window.currentPagina = 0;
 
-  // 🔥 Atualiza dadosCompletos.page com a página atual
+  window.currentMateria = currentMateria;
+  window.currentTopico = currentTopico;
+  window.currentPagina = currentPagina;
+
+  dadosCompletos.current = {
+    caderno: dadosCompletos.current?.caderno || "Geral",
+    materia: currentMateria,
+    topico: currentTopico,
+    pagina: currentPagina,
+  };
+
   const paginas =
     dadosCompletos.materias[materia].topicos[currentTopico].paginas;
   const pageData =
@@ -400,8 +468,16 @@ async function goToMateria(materia) {
   window.currentPublicId = pageData.public_id || null;
   window.currentIsPublic = pageData.is_public || 0;
 
-  restorePage(); // agora usa dadosCompletos.page
+  restorePage();
   updateMenuUI();
+  setTimeout(() => {
+    renderNavTree({
+      caderno: dadosCompletos.current?.caderno || "Geral",
+      materia: currentMateria,
+      topico: currentTopico,
+      pagina: currentPagina,
+    });
+  }, 400);
 }
 
 async function goToTopico(materia, topico) {
@@ -410,17 +486,26 @@ async function goToTopico(materia, topico) {
     !dadosCompletos.materias[materia] ||
     !topico ||
     !dadosCompletos.materias[materia].topicos[topico]
-  ) {
-    console.warn("Tópico não encontrado:", topico);
+  )
     return;
-  }
-  await saveFullState();
+
+  saveFullState().catch(console.error);
+
   currentMateria = materia;
   currentTopico = topico;
   currentPagina = 0;
-  window.currentPagina = 0;
 
-  // 🔥 Atualiza dadosCompletos.page com a primeira página do tópico
+  window.currentMateria = currentMateria;
+  window.currentTopico = currentTopico;
+  window.currentPagina = currentPagina;
+
+  dadosCompletos.current = {
+    caderno: dadosCompletos.current?.caderno || "Geral",
+    materia: currentMateria,
+    topico: currentTopico,
+    pagina: currentPagina,
+  };
+
   const paginas = dadosCompletos.materias[materia].topicos[topico].paginas;
   const pageData =
     paginas.length > 0 ? paginas[0] : { cards: [], connections: [] };
@@ -430,14 +515,33 @@ async function goToTopico(materia, topico) {
 
   restorePage();
   updateMenuUI();
+  setTimeout(() => {
+    renderNavTree({
+      caderno: dadosCompletos.current?.caderno || "Geral",
+      materia: currentMateria,
+      topico: currentTopico,
+      pagina: currentPagina,
+    });
+  }, 400);
 }
 
 async function goToPagina(materia, topico, paginaIndex) {
-  await saveFullState();
+  saveFullState().catch(console.error);
+
   currentMateria = materia;
   currentTopico = topico;
   currentPagina = paginaIndex;
-  window.currentPagina = paginaIndex; // <-- ADICIONE ESTA LINHA
+
+  window.currentMateria = currentMateria;
+  window.currentTopico = currentTopico;
+  window.currentPagina = currentPagina;
+
+  dadosCompletos.current = {
+    caderno: dadosCompletos.current?.caderno || "Geral",
+    materia: currentMateria,
+    topico: currentTopico,
+    pagina: currentPagina,
+  };
 
   const paginas =
     dadosCompletos.materias[materia]?.topicos[topico]?.paginas || [];
@@ -446,7 +550,16 @@ async function goToPagina(materia, topico, paginaIndex) {
   window.currentPublicId = pageData.public_id || null;
   window.currentIsPublic = pageData.is_public || 0;
 
-  restorePage();
+  restorePage(); // não vai mais abrir toolbar nem nada que dependa de current
+
+  // 🔥 Render explícito do sidebar com o estado exato da navegação
+  renderNavTree({
+    caderno: dadosCompletos.current.caderno,
+    materia: materia,
+    topico: topico,
+    pagina: paginaIndex,
+  });
+
   updateMenuUI();
 }
 
@@ -462,24 +575,35 @@ function mudarPagina(delta) {
 
 function criarMateria() {
   pushState();
+
+  const caderno = dadosCompletos.current?.caderno;
+  if (!caderno) {
+    alert("Crie ou selecione um caderno primeiro.");
+    return;
+  }
+
   const nome = prompt("Nome da nova matéria:");
-  if (!nome || nome.trim() === "") {
+  if (!nome || !nome.trim()) {
     alert("O nome da matéria não pode estar vazio.");
     return;
   }
-  if (!dadosCompletos.materias || Array.isArray(dadosCompletos.materias)) {
-    dadosCompletos.materias = {};
-  }
+
+  if (!dadosCompletos.materias) dadosCompletos.materias = {};
   if (dadosCompletos.materias[nome]) {
     alert("Já existe uma matéria com esse nome.");
     return;
   }
-  dadosCompletos.materias[nome] = { topicos: {} };
-  saveFullState().then(() => {
-    goToMateria(nome);
-  });
-}
 
+  // Cria a matéria no mapa global
+  dadosCompletos.materias[nome] = { topicos: {} };
+
+  // Vincula ao caderno atual
+  if (!dadosCompletos.cadernos[caderno].materias.includes(nome)) {
+    dadosCompletos.cadernos[caderno].materias.push(nome);
+  }
+
+  saveFullState().then(() => goToMateria(nome));
+}
 function criarTopico() {
   pushState();
   if (!currentMateria || !dadosCompletos.materias[currentMateria]) {
@@ -576,6 +700,8 @@ async function novaPagina() {
 
   restorePage(); // agora restaura a página vazia (não tem conexões)
   updateMenuUI();
+  renderNavTree();
+
   await saveFullState();
 }
 
@@ -692,99 +818,143 @@ function deletarMateria() {
   if (!confirm(`Deletar matéria "${currentMateria}" e todos os seus tópicos?`))
     return;
 
-  // 1. Remove a matéria
+  // Remove do mapa global
   delete dadosCompletos.materias[currentMateria];
 
-  // 2. Seleciona a primeira matéria restante
-  const novaMateria = Object.keys(dadosCompletos.materias)[0];
-  currentMateria = novaMateria;
-  const topicos = Object.keys(dadosCompletos.materias[novaMateria].topicos);
-  currentTopico = topicos[0] || "Tópico 1";
-  currentPagina = 0;
+  // Remove de TODOS os cadernos (por segurança)
+  Object.values(dadosCompletos.cadernos).forEach((c) => {
+    const i = c.materias.indexOf(currentMateria);
+    if (i > -1) c.materias.splice(i, 1);
+  });
 
-  // 🔥 ATUALIZA dadosCompletos.page com a primeira página do novo tópico
-  const paginas =
-    dadosCompletos.materias[novaMateria].topicos[currentTopico].paginas;
-  const novaPaginaData =
-    paginas.length > 0
-      ? paginas[0]
-      : { cards: [], connections: [], titulo: "Página 1" };
-  dadosCompletos.page = novaPaginaData;
-  window.currentPublicId = novaPaginaData.public_id || null;
-  window.currentIsPublic = novaPaginaData.is_public || 0;
+  // Escolhe a próxima matéria DO CADERNO ATUAL
+  const caderno = getCadernoAtual();
+  const nomes = dadosCompletos.cadernos[caderno]?.materias || [];
+  const novaMateria = nomes[0] || "";
 
-  // 3. Atualiza a tela IMEDIATAMENTE
+  if (novaMateria) {
+    currentMateria = novaMateria;
+    const topicos = Object.keys(dadosCompletos.materias[novaMateria].topicos);
+    currentTopico = topicos[0] || "Tópico 1";
+    currentPagina = 0;
+    const paginas =
+      dadosCompletos.materias[novaMateria].topicos[currentTopico].paginas;
+    dadosCompletos.page = paginas[0] || { cards: [], connections: [] };
+  } else {
+    currentMateria = "";
+    currentTopico = "";
+    currentPagina = 0;
+    dadosCompletos.page = { cards: [], connections: [] };
+  }
+
   restorePage();
   renderNavTree();
   updateMenuUI();
   fecharModalDelecao();
-
-  // 4. Salva em segundo plano
-  saveFullState().catch((err) =>
-    console.error("Erro ao salvar após deletar matéria:", err),
-  );
+  saveFullState();
 }
 
 // ============================================================
 //  RENDERIZAÇÃO DA ÁRVORE DE NAVEGAÇÃO
 // ============================================================
 
-function renderNavTree() {
+function renderNavTree(override) {
   const container = document.getElementById("nav-tree");
   if (!container) return;
 
-  if (!dadosCompletos || Object.keys(dadosCompletos.materias).length === 0) {
+  const cadernos = dadosCompletos.cadernos || {};
+  if (Object.keys(cadernos).length === 0) {
     container.innerHTML =
-      '<div class="nav-empty">Nenhuma matéria criada.<br>Clique em "+ Mat" no topo.</div>';
+      '<div class="nav-empty">Nenhum caderno criado.<br>Clique no ícone de caderno no topo.</div>';
     return;
   }
 
+  const o = override || {};
+  const cadernoAtivo = o.caderno ?? (dadosCompletos.current?.caderno || "");
+  const materiaAtiva = o.materia ?? (currentMateria || "");
+  const topicoAtivo = o.topico ?? (currentTopico || "");
+  const paginaAtiva = o.pagina ?? (Number(currentPagina) || 0);
+
+  // 🔥 Ícones SVG (estilo codicons do VS Code)
+  const ICONS = {
+    caderno: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 2.5A1.5 1.5 0 0 1 3.5 1h9A1.5 1.5 0 0 1 14 2.5v11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 2 13.5v-11Z"/><path d="M5 1v14"/></svg>`,
+    materia: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1.5 3.5A1.5 1.5 0 0 1 3 2h3.5l1.5 1.5H13A1.5 1.5 0 0 1 14.5 5v7A1.5 1.5 0 0 1 13 13.5H3A1.5 1.5 0 0 1 1.5 12v-8.5Z"/></svg>`,
+    topico: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="8" r="5.5"/><circle cx="8" cy="8" r="2" fill="currentColor"/></svg>`,
+    pagina: `<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 1.5h6.5L13.5 5.5V14A.5.5 0 0 1 13 14.5H3a.5.5 0 0 1-.5-.5V2a.5.5 0 0 1 .5-.5Z"/><path d="M9.5 1.5V5.5H13.5"/></svg>`,
+  };
+
+  // 🔥 Cores por tipo
+  const COLORS = {
+    caderno: "#a78bfa", // roxo
+    materia: "#60a5fa", // azul
+    topico: "#fbbf24", // amarelo
+    pagina: "#94a3b8", // cinza
+  };
+
   let html =
     '<ul class="nav-tree-ul" style="list-style:none; padding-left:0;">';
-  const materias = dadosCompletos.materias || {};
 
-  for (const [materia, dadosMateria] of Object.entries(materias)) {
-    if (!materia || materia.trim() === "") continue;
-    const isActiveMateria = materia === currentMateria;
-    const topicos = dadosMateria.topicos || {};
-    const hasTopicos = Object.keys(topicos).length > 0;
+  for (const [caderno, dadosCaderno] of Object.entries(cadernos)) {
+    const isActiveCaderno = caderno === cadernoAtivo;
+    const nomesMaterias = dadosCaderno.materias || [];
 
-    html += `<li class="nav-tree-item" data-type="materia" data-name="${materia}">`;
-    html += `<div class="nav-tree-header ${isActiveMateria ? "active" : ""}">`;
-    html += `<span class="nav-tree-arrow">${hasTopicos ? "▶" : "▪"}</span>`;
-    html += `<span class="nav-tree-label" data-action="goToMateria" data-value="${materia}">📘 ${materia}</span>`;
-    html += `<span class="nav-tree-badge">${Object.keys(topicos).length}</span>`;
+    html += `<li class="nav-tree-item" data-type="caderno" data-name="${escapeHtml(caderno)}">`;
+    html += `<div class="nav-tree-header ${isActiveCaderno ? "active" : ""}">`;
+    html += `<span class="nav-tree-arrow">▶</span>`;
+    html += `<span style="display:inline-flex; align-items:center; color:${COLORS.caderno}; flex-shrink:0;">${ICONS.caderno}</span>`;
+    html += `<span class="nav-tree-label" data-action="goToCaderno" data-value="${escapeHtml(caderno)}">${escapeHtml(caderno)}</span>`;
+    html += `<span class="nav-tree-badge">${nomesMaterias.length}</span>`;
     html += `</div>`;
 
-    if (hasTopicos) {
-      html += `<ul class="nav-tree-children" style="list-style:none; padding-left:20px; display:${isActiveMateria ? "block" : "none"};">`;
-      for (const [topico, dadosTopico] of Object.entries(topicos)) {
-        const isActiveTopico =
-          topico === currentTopico && materia === currentMateria;
-        const paginas = dadosTopico.paginas || [];
-        const hasPaginas = paginas.length > 0;
+    if (nomesMaterias.length > 0) {
+      html += `<ul class="nav-tree-children" style="display:${isActiveCaderno ? "block" : "none"};">`;
+      for (const materia of nomesMaterias) {
+        const dadosMateria = dadosCompletos.materias[materia];
+        if (!dadosMateria) continue;
 
-        html += `<li class="nav-tree-item" data-type="topico" data-name="${topico}">`;
-        html += `<div class="nav-tree-header ${isActiveTopico ? "active" : ""}" onclick="toggleNavTree(this)">`;
-        html += `<span class="nav-tree-arrow">${hasPaginas ? "▶" : "▪"}</span>`;
-        html += `<span class="nav-tree-label" data-action="goToTopico" data-value="${topico}">📂 ${topico}</span>`;
-        html += `<span class="nav-tree-badge">${paginas.length}</span>`;
+        const isActiveMateria = isActiveCaderno && materia === materiaAtiva;
+        const topicos = dadosMateria.topicos || {};
+        const temTopicos = Object.keys(topicos).length > 0;
+
+        html += `<li class="nav-tree-item" data-type="materia" data-name="${escapeHtml(materia)}">`;
+        html += `<div class="nav-tree-header ${isActiveMateria ? "active" : ""}">`;
+        html += `<span class="nav-tree-arrow">${temTopicos ? "▶" : "·"}</span>`;
+        html += `<span style="display:inline-flex; align-items:center; color:${COLORS.materia}; flex-shrink:0;">${ICONS.materia}</span>`;
+        html += `<span class="nav-tree-label" data-action="goToMateria" data-value="${escapeHtml(materia)}">${escapeHtml(materia)}</span>`;
+        html += `<span class="nav-tree-badge">${Object.keys(topicos).length}</span>`;
         html += `</div>`;
 
-        if (hasPaginas) {
-          html += `<ul class="nav-tree-children" style="list-style:none; padding-left:20px; display:${isActiveTopico ? "block" : "none"};">`;
-          paginas.forEach((pagina, idx) => {
-            const isActivePagina =
-              idx === currentPagina &&
-              topico === currentTopico &&
-              materia === currentMateria;
-            const label = pagina.titulo || `📄 Pág. ${idx + 1}`;
-            html += `<li class="nav-tree-item" data-type="pagina" data-index="${idx}">`;
-            html += `<div class="nav-tree-header ${isActivePagina ? "active" : ""}" style="padding-left:8px;">`;
-            html += `<span class="nav-tree-label" data-action="goToPagina" data-value="${idx}">${label}</span>`;
+        if (temTopicos) {
+          html += `<ul class="nav-tree-children" style="display:${isActiveMateria ? "block" : "none"};">`;
+          for (const [topico, dadosTopico] of Object.entries(topicos)) {
+            const isActiveTopico = isActiveMateria && topico === topicoAtivo;
+            const paginas = dadosTopico.paginas || [];
+            const temPaginas = paginas.length > 0;
+
+            html += `<li class="nav-tree-item" data-type="topico" data-name="${escapeHtml(topico)}">`;
+            html += `<div class="nav-tree-header ${isActiveTopico ? "active" : ""}">`;
+            html += `<span class="nav-tree-arrow">${temPaginas ? "▶" : "·"}</span>`;
+            html += `<span style="display:inline-flex; align-items:center; color:${COLORS.topico}; flex-shrink:0;">${ICONS.topico}</span>`;
+            html += `<span class="nav-tree-label" data-action="goToTopico" data-value="${escapeHtml(topico)}">${escapeHtml(topico)}</span>`;
+            html += `<span class="nav-tree-badge">${paginas.length}</span>`;
             html += `</div>`;
+
+            if (temPaginas) {
+              html += `<ul class="nav-tree-children" style="display:${isActiveTopico ? "block" : "none"};">`;
+              paginas.forEach((pagina, idx) => {
+                const isActivePagina = isActiveTopico && idx === paginaAtiva;
+                const label = pagina.titulo || `Página ${idx + 1}`;
+                html += `<li class="nav-tree-item" data-type="pagina" data-index="${idx}">`;
+                html += `<div class="nav-tree-header ${isActivePagina ? "active" : ""}">`;
+                html += `<span class="nav-tree-arrow">·</span>`;
+                html += `<span style="display:inline-flex; align-items:center; color:${COLORS.pagina}; flex-shrink:0;">${ICONS.pagina}</span>`;
+                html += `<span class="nav-tree-label" data-action="goToPagina" data-value="${idx}">${escapeHtml(label)}</span>`;
+                html += `</div></li>`;
+              });
+              html += `</ul>`;
+            }
             html += `</li>`;
-          });
+          }
           html += `</ul>`;
         }
         html += `</li>`;
@@ -798,23 +968,29 @@ function renderNavTree() {
   container.innerHTML = html;
   expandPathToCurrent();
 }
+function escapeHtml(s) {
+  return String(s).replace(
+    /[&<>"']/g,
+    (c) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+      })[c],
+  );
+}
 
 // Renomear itens da árvore com duplo clique
 let navTimer = null;
 
 // ===== NAVEGAÇÃO INSTANTÂNEA + RENOMEAR COM Ctrl+Clique =====
 document.getElementById("nav-sidebar").addEventListener("click", function (e) {
-  // 1. Encontra o header clicado
   const header = e.target.closest(".nav-tree-header");
   if (!header) return;
 
-  // 2. Se clicou na seta → apenas toggle e para
-  if (e.target.closest(".nav-tree-arrow")) {
-    toggleNavTree(header);
-    return;
-  }
-
-  // 3. Ctrl+Clique → renomear (em qualquer lugar do header)
+  // Ctrl+Clique → renomear (mantém comportamento)
   if (e.ctrlKey) {
     e.preventDefault();
     const item = header.closest(".nav-tree-item");
@@ -823,7 +999,14 @@ document.getElementById("nav-sidebar").addEventListener("click", function (e) {
     const label = header.querySelector(".nav-tree-label");
     if (!label) return;
 
-    // Lógica de renomear (igual ao que já existia)
+    if (type === "caderno") {
+      const nomeAntigo = item.dataset.name;
+      const novoNome = prompt("Novo nome do caderno:", nomeAntigo);
+      if (novoNome && novoNome.trim() && novoNome !== nomeAntigo) {
+        renomearCaderno(nomeAntigo, novoNome.trim());
+      }
+      return;
+    }
     if (type === "pagina") {
       const index = parseInt(item.dataset.index);
       const materia = currentMateria;
@@ -871,14 +1054,23 @@ document.getElementById("nav-sidebar").addEventListener("click", function (e) {
     return;
   }
 
-  // 4. Clique normal → navegação
   const label = header.querySelector(".nav-tree-label");
   if (!label) return;
+
+  // 🔥 Clique na SETA → só toggle, não navega
+  if (e.target.closest(".nav-tree-arrow")) {
+    toggleNavTree(header);
+    return;
+  }
+
+  // 🔥 Clique no resto do header (label/badge) → navega
   const action = label.dataset.action;
   const value = label.dataset.value;
   if (!action) return;
 
-  if (action === "goToMateria") {
+  if (action === "goToCaderno") {
+    goToCaderno(value);
+  } else if (action === "goToMateria") {
     goToMateria(value);
   } else if (action === "goToTopico") {
     const item = header.closest(".nav-tree-item");
@@ -928,7 +1120,6 @@ function toggleNavTree(headerElement) {
 }
 
 function updateMenuUI() {
-  renderNavTree();
   const total =
     dadosCompletos.materias[currentMateria]?.topicos[currentTopico]?.paginas
       .length || 0;
@@ -958,6 +1149,10 @@ document.addEventListener("DOMContentLoaded", async function () {
   await loadFullState(); // ← única chamada
   updateMenuUI();
   updateContainerHeight();
+  // 🔥 Roda spell check depois de carregar tudo
+  setTimeout(() => {
+    if (typeof spellCheckAllCards === "function") spellCheckAllCards();
+  }, 2500);
 
   setInterval(() => debouncedSaveFullState(), 5000);
   window.addEventListener("beforeunload", () => debouncedSaveFullState(true));
@@ -1114,3 +1309,206 @@ window.saveFullState = async function () {
 function forceSave() {
   window.saveFullState();
 }
+
+// ============================================================
+//  CADERNOS
+// ============================================================
+function getCadernoAtual() {
+  return dadosCompletos.current?.caderno || null;
+}
+
+async function criarCaderno() {
+  const nome = prompt("Nome do novo caderno:");
+  if (!nome || !nome.trim()) return;
+
+  if (!dadosCompletos.cadernos) dadosCompletos.cadernos = {};
+  if (dadosCompletos.cadernos[nome]) {
+    alert("Já existe um caderno com esse nome.");
+    return;
+  }
+
+  // 🔥 Salva o estado do caderno atual ANTES de trocar
+  await saveFullState();
+
+  dadosCompletos.cadernos[nome] = { materias: [] };
+  dadosCompletos.current = {
+    caderno: nome,
+    materia: "",
+    topico: "",
+    pagina: 0,
+  };
+
+  // 🔥 Limpa os globais pra saveFullState não escrever no lugar errado
+  currentMateria = "";
+  currentTopico = "";
+  currentPagina = 0;
+
+  dadosCompletos.page = { cards: [], connections: [] };
+
+  renderNavTree();
+  restorePage();
+  await saveFullState();
+}
+
+async function goToCaderno(nome) {
+  if (!dadosCompletos.cadernos?.[nome]) return;
+
+  saveFullState().catch(console.error); // 🔥 não await
+
+  dadosCompletos.current.caderno = nome;
+  const nomes = dadosCompletos.cadernos[nome].materias || [];
+
+  if (nomes.length > 0) {
+    // goToMateria já seta currentMateria/currentTopico/currentPagina
+    goToMateria(nomes[0]);
+  } else {
+    dadosCompletos.current.materia = "";
+    dadosCompletos.current.topico = "";
+    dadosCompletos.current.pagina = 0;
+    currentMateria = "";
+    currentTopico = "";
+    currentPagina = 0;
+    dadosCompletos.page = { cards: [], connections: [] };
+    restorePage();
+    updateMenuUI();
+  }
+}
+
+async function deletarCaderno() {
+  const nome = getCadernoAtual();
+  if (!nome) return alert("Nenhum caderno selecionado.");
+  if (Object.keys(dadosCompletos.cadernos).length <= 1) {
+    return alert("Não é possível deletar o único caderno.");
+  }
+  const nomes = dadosCompletos.cadernos[nome].materias || [];
+  if (!confirm(`Deletar caderno "${nome}" e suas ${nomes.length} matérias?`))
+    return;
+
+  // Deleta as matérias do mapa global
+  nomes.forEach((m) => delete dadosCompletos.materias[m]);
+
+  delete dadosCompletos.cadernos[nome];
+
+  const proximo = Object.keys(dadosCompletos.cadernos)[0];
+  dadosCompletos.current = {
+    caderno: proximo,
+    materia: "",
+    topico: "",
+    pagina: 0,
+  };
+  currentMateria = "";
+  currentTopico = "";
+  currentPagina = 0;
+
+  renderNavTree();
+  restorePage();
+  await saveFullState();
+}
+
+async function renomearCaderno(nomeAntigo, novoNome) {
+  if (!novoNome || !novoNome.trim() || novoNome === nomeAntigo) return;
+  if (dadosCompletos.cadernos[novoNome]) {
+    return alert("Já existe um caderno com esse nome.");
+  }
+  dadosCompletos.cadernos[novoNome] = dadosCompletos.cadernos[nomeAntigo];
+  delete dadosCompletos.cadernos[nomeAntigo];
+
+  if (dadosCompletos.current.caderno === nomeAntigo) {
+    dadosCompletos.current.caderno = novoNome;
+  }
+  renderNavTree();
+  await saveFullState();
+}
+
+// ============================================================
+// MENU DROPDOWN DE CRIAÇÃO + BUSCA
+// ============================================================
+function closeAddMenu() {
+  const menu = document.getElementById("nav-add-menu");
+  const btn = document.getElementById("btn-add-toggle");
+  if (menu) menu.classList.remove("open");
+  if (btn) btn.classList.remove("open");
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+  const btn = document.getElementById("btn-add-toggle");
+  const menu = document.getElementById("nav-add-menu");
+
+  if (btn && menu) {
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      const isOpen = menu.classList.toggle("open");
+      btn.classList.toggle("open", isOpen);
+    });
+
+    document.addEventListener("click", function (e) {
+      if (!menu.contains(e.target) && !btn.contains(e.target)) {
+        closeAddMenu();
+      }
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeAddMenu();
+    });
+  }
+
+  // Busca/filtro
+  const searchInput = document.getElementById("nav-search-input");
+  if (searchInput) {
+    searchInput.addEventListener("input", function () {
+      const term = this.value.toLowerCase().trim();
+      const items = document.querySelectorAll(
+        "#nav-sidebar .nav-tree-item[data-type='materia'], #nav-sidebar .nav-tree-item[data-type='pagina']",
+      );
+
+      items.forEach((item) => {
+        const label = item.querySelector(".nav-tree-label");
+        if (!label) return;
+        const text = label.textContent.toLowerCase();
+        const match = !term || text.includes(term);
+        item.style.display = match ? "" : "none";
+
+        if (match && item.dataset.type === "pagina") {
+          const parent = item.closest('[data-type="topico"]');
+          if (parent) parent.style.display = "";
+          const grandParent = parent?.closest('[data-type="materia"]');
+          if (grandParent) grandParent.style.display = "";
+        }
+      });
+
+      if (!term) {
+        document
+          .querySelectorAll("#nav-sidebar .nav-tree-item")
+          .forEach((el) => (el.style.display = ""));
+        if (typeof expandPathToCurrent === "function") expandPathToCurrent();
+      }
+    });
+  }
+});
+
+function toggleTheme() {
+  const html = document.documentElement;
+  const current = html.getAttribute("data-theme") || "dark";
+  const next = current === "dark" ? "light" : "dark";
+  html.setAttribute("data-theme", next);
+  localStorage.setItem("theme", next);
+  updateThemeIcon();
+  console.log("🎨 Tema:", next);
+}
+
+function updateThemeIcon() {
+  const icon = document.getElementById("theme-icon");
+  if (!icon) return;
+  const current = document.documentElement.getAttribute("data-theme") || "dark";
+  icon.className = current === "dark" ? "bi bi-moon-stars" : "bi bi-sun";
+}
+
+document.addEventListener("DOMContentLoaded", updateThemeIcon);
+
+// Atalho: Ctrl+J
+document.addEventListener("keydown", function (e) {
+  if ((e.ctrlKey || e.metaKey) && e.key === "j") {
+    e.preventDefault();
+    toggleTheme();
+  }
+});

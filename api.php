@@ -245,10 +245,52 @@ if ($action === 'save') {
     try {
         $db->beginTransaction();
 
-        // Remove dados antigos do usuário
+        // ------------------------------------------------------------
+        // 1. LIMPEZA — ordem importa por causa das FKs
+        // ------------------------------------------------------------
+        // cadernos tem ON DELETE SET NULL em materias, mas vamos apagar
+        // tudo do usuário mesmo assim, então tanto faz a ordem.
+        $stmt = $db->prepare("DELETE FROM cadernos WHERE usuario_id = ?");
+        $stmt->execute([$usuario_id]);
+
         $stmt = $db->prepare("DELETE FROM materias WHERE usuario_id = ?");
         $stmt->execute([$usuario_id]);
 
+        // ------------------------------------------------------------
+        // 2. CRIA OS CADERNOS e monta nome → id
+        // ------------------------------------------------------------
+        $cadernoId = [];   // ['Geral' => 1, 'Faculdade' => 2]
+        $cadernos  = $data['cadernos'] ?? [];
+
+        if (is_array($cadernos) && !empty($cadernos)) {
+            $stmtInsCad = $db->prepare("INSERT INTO cadernos (usuario_id, nome) VALUES (?, ?)");
+            foreach (array_keys($cadernos) as $nomeCaderno) {
+                $nomeCaderno = trim((string)$nomeCaderno);
+                if ($nomeCaderno === '') continue;
+                if (strlen($nomeCaderno) > 255) $nomeCaderno = substr($nomeCaderno, 0, 255);
+                $stmtInsCad->execute([$usuario_id, $nomeCaderno]);
+                $cadernoId[$nomeCaderno] = (int)$db->lastInsertId();
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 3. Mapa reverso: matéria → caderno_id
+        // ------------------------------------------------------------
+        $cadernoDaMateria = [];   // ['Banco de dados' => 1, 'Arquitetura' => 2]
+        if (!empty($cadernos)) {
+            foreach ($cadernos as $nomeCaderno => $info) {
+                if (!isset($cadernoId[$nomeCaderno])) continue;
+                $lista = $info['materias'] ?? [];
+                if (!is_array($lista)) continue;
+                foreach ($lista as $nomeMateria) {
+                    $cadernoDaMateria[$nomeMateria] = $cadernoId[$nomeCaderno];
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 4. LOOP DE MATÉRIAS (o mesmo que você já tem, + caderno_id)
+        // ------------------------------------------------------------
         $materias = $data['materias'] ?? [];
 
         foreach ($materias as $nomeMateria => $materia) {
@@ -256,8 +298,11 @@ if ($action === 'save') {
             if ($nomeMateria === '') continue;
             if (strlen($nomeMateria) > 100) $nomeMateria = substr($nomeMateria, 0, 100);
 
-            $stmt = $db->prepare("INSERT INTO materias (usuario_id, nome) VALUES (?, ?)");
-            $stmt->execute([$usuario_id, $nomeMateria]);
+            // 🔥 caderno_id da matéria (ou null se órfã)
+            $cadernoIdAtual = $cadernoDaMateria[$nomeMateria] ?? null;
+
+            $stmt = $db->prepare("INSERT INTO materias (usuario_id, caderno_id, nome) VALUES (?, ?, ?)");
+            $stmt->execute([$usuario_id, $cadernoIdAtual, $nomeMateria]);
             $materia_id = (int)$db->lastInsertId();
 
             $topicos = $materia['topicos'] ?? [];
@@ -279,22 +324,19 @@ if ($action === 'save') {
                     $ordem = (int)$ordem;
                     if ($ordem < 0) $ordem = 0;
 
-                    // 🔥 public_id – preserva se existir ou gera novo
                     $public_id = trim($pagina['public_id'] ?? '');
                     if (empty($public_id)) {
-                        $public_id = bin2hex(random_bytes(16)); // 32 caracteres hex
+                        $public_id = bin2hex(random_bytes(16));
                     }
 
                     $titulo = trim($pagina['titulo'] ?? "Página " . ($ordem + 1));
                     if (strlen($titulo) > 200) $titulo = substr($titulo, 0, 200);
 
-                    // 🔥 Inclui is_public no INSERT
                     $is_public = isset($pagina['is_public']) ? (int)$pagina['is_public'] : 0;
                     $stmt = $db->prepare("INSERT INTO paginas (topico_id, titulo, ordem, public_id, is_public) VALUES (?, ?, ?, ?, ?)");
                     $stmt->execute([$topico_id, $titulo, $ordem, $public_id, $is_public]);
                     $pagina_id = (int)$db->lastInsertId();
 
-                    // Cards
                     // Cards
                     $cards = $pagina['cards'] ?? [];
                     if (!is_array($cards)) continue;
@@ -310,7 +352,7 @@ if ($action === 'save') {
                         $class_name = trim($card['className'] ?? 'editable-item');
                         $sort_order = isset($card['sort_order']) ? (int)$card['sort_order'] : 0;
                         $state_json = $card['state'] ?? null;
-                        $card_id   = trim($card['cardId'] ?? '');   // <-- NOVO
+                        $card_id   = trim($card['cardId'] ?? '');
                         if (strlen($card_id) > 50) $card_id = substr($card_id, 0, 50);
 
                         if (!isValidCssValue($pos_left)) $pos_left = '20px';
@@ -321,9 +363,9 @@ if ($action === 'save') {
 
                         $state_json = validateJson($state_json);
 
-                        $stmt = $db->prepare("INSERT INTO cards 
-        (pagina_id, html, pos_left, pos_top, width, height, class_name, sort_order, state_json, card_id)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                        $stmt = $db->prepare("INSERT INTO cards
+                            (pagina_id, html, pos_left, pos_top, width, height, class_name, sort_order, state_json, card_id)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
                         $stmt->execute([
                             $pagina_id,
                             $html,
@@ -334,7 +376,7 @@ if ($action === 'save') {
                             $class_name,
                             $sort_order,
                             $state_json,
-                            $card_id   // <-- NOVO
+                            $card_id
                         ]);
                     }
 
@@ -353,22 +395,18 @@ if ($action === 'save') {
                         if (!in_array($fromPos, $validPos)) $fromPos = 'bottom';
                         if (!in_array($toPos, $validPos)) $toPos = 'top';
 
-                        $stmt = $db->prepare("INSERT INTO connections 
+                        $stmt = $db->prepare("INSERT INTO connections
                             (pagina_id, from_index, from_pos, to_index, to_pos)
                             VALUES (?, ?, ?, ?, ?)");
-                        $stmt->execute([
-                            $pagina_id,
-                            $fromIndex,
-                            $fromPos,
-                            $toIndex,
-                            $toPos
-                        ]);
+                        $stmt->execute([$pagina_id, $fromIndex, $fromPos, $toIndex, $toPos]);
                     }
                 }
             }
         }
 
-        // Salva estado atual
+        // ------------------------------------------------------------
+        // 5. Estado atual (current) — agora inclui caderno
+        // ------------------------------------------------------------
         $current = $data['current'] ?? [];
         sanitizeRecursive($current, 50000);
         $jsonCurrent = json_encode($current);
@@ -387,7 +425,6 @@ if ($action === 'save') {
     }
     exit;
 }
-
 // ============================================================
 // 7. ROTA PROTEGIDA: LOAD
 // ============================================================
@@ -395,6 +432,7 @@ if ($action === 'load') {
     try {
         $data = [
             'materias' => [],
+            'cadernos' => [],
             'current' => null,
             'page' => ['cards' => [], 'connections' => []]
         ];
@@ -405,55 +443,108 @@ if ($action === 'load') {
         $currentJson = $stmt->fetchColumn();
         $data['current'] = $currentJson ? json_decode($currentJson, true) : null;
 
-        // Carregar matérias existentes
-        $stmt = $db->prepare("SELECT id, nome FROM materias WHERE usuario_id = ? ORDER BY nome");
+        // ------------------------------------------------------------
+        // 1. Carrega cadernos do usuário
+        // ------------------------------------------------------------
+        $cadernos = [];   // ['Geral' => ['id' => 1, 'materias' => []]]
+        $stmt = $db->prepare("SELECT id, nome FROM cadernos WHERE usuario_id = ? ORDER BY ordem, nome");
         $stmt->execute([$usuario_id]);
-        $materias = $stmt->fetchAll();
+        foreach ($stmt->fetchAll() as $c) {
+            $cadernos[$c['nome']] = ['id' => (int)$c['id'], 'materias' => []];
+        }
 
-        // SE NÃO HOUVER MATÉRIAS, CRIAR ESTRUTURA PADRÃO
-        if (empty($materias)) {
-            // Inserir matéria padrão
-            $stmt = $db->prepare("INSERT INTO materias (usuario_id, nome) VALUES (?, ?)");
-            $stmt->execute([$usuario_id, 'Geral']);
+        // ------------------------------------------------------------
+        // 2. Carrega matérias com caderno_id
+        // ------------------------------------------------------------
+        $stmt = $db->prepare("SELECT id, nome, caderno_id FROM materias WHERE usuario_id = ? ORDER BY nome");
+        $stmt->execute([$usuario_id]);
+        $materiasRaw = $stmt->fetchAll();
+
+        // Se não há matérias, cria estrutura padrão (matéria + tópico + página)
+        if (empty($materiasRaw)) {
+            // Cria caderno Geral (se não existir)
+            if (!isset($cadernos['Geral'])) {
+                $stmt = $db->prepare("INSERT INTO cadernos (usuario_id, nome) VALUES (?, ?)");
+                $stmt->execute([$usuario_id, 'Geral']);
+                $geralId = (int)$db->lastInsertId();
+                $cadernos['Geral'] = ['id' => $geralId, 'materias' => []];
+            }
+
+            $stmt = $db->prepare("INSERT INTO materias (usuario_id, caderno_id, nome) VALUES (?, ?, ?)");
+            $stmt->execute([$usuario_id, $cadernos['Geral']['id'], 'Geral']);
             $materiaId = (int)$db->lastInsertId();
 
-            // Inserir tópico padrão
             $stmt = $db->prepare("INSERT INTO topicos (materia_id, nome) VALUES (?, ?)");
             $stmt->execute([$materiaId, 'Introdução']);
             $topicoId = (int)$db->lastInsertId();
 
-            // Inserir página padrão com public_id
             $public_id = bin2hex(random_bytes(16));
             $stmt = $db->prepare("INSERT INTO paginas (topico_id, titulo, ordem, public_id, is_public) VALUES (?, ?, ?, ?, ?)");
-            $stmt->execute([$topicoId, 'Página 1', 0, $public_id, 0]); // is_public =
+            $stmt->execute([$topicoId, 'Página 1', 0, $public_id, 0]);
             $paginaId = (int)$db->lastInsertId();
 
-            // Inserir um card de boas-vindas
-            $stmt = $db->prepare("INSERT INTO cards (pagina_id, html, pos_left, pos_top, width, height, class_name, sort_order) 
+            $stmt = $db->prepare("INSERT INTO cards (pagina_id, html, pos_left, pos_top, width, height, class_name, sort_order)
                                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
-            $stmt->execute([
-                $paginaId,
-                '50px',
-                '50px',
-                '400px',
-                'auto',
-                'editable-item',
-                0
-            ]);
+            $stmt->execute([$paginaId, '', '50px', '50px', '400px', 'auto', 'editable-item', 0]);
 
-            // Atualizar estado atual no usuário
-            $currentDefault = json_encode(['materia' => 'Geral', 'topico' => 'Introdução', 'pagina' => 0]);
+            $currentDefault = json_encode(['caderno' => 'Geral', 'materia' => 'Geral', 'topico' => 'Introdução', 'pagina' => 0]);
             $stmt = $db->prepare("UPDATE usuarios SET dados_atual = ? WHERE id = ?");
             $stmt->execute([$currentDefault, $usuario_id]);
 
-            // Agora recarregar os dados para montar a resposta
-            $stmt = $db->prepare("SELECT id, nome FROM materias WHERE usuario_id = ? ORDER BY nome");
+            $stmt = $db->prepare("SELECT id, nome, caderno_id FROM materias WHERE usuario_id = ? ORDER BY nome");
             $stmt->execute([$usuario_id]);
-            $materias = $stmt->fetchAll();
+            $materiasRaw = $stmt->fetchAll();
         }
 
-        // Montar a estrutura completa
-        foreach ($materias as $m) {
+        // ------------------------------------------------------------
+        // 3. Vincula matérias aos cadernos (cria Geral se sobrar órfã)
+        // ------------------------------------------------------------
+        $precisaCriarGeral = false;
+        $idsCadernos = [];
+        foreach ($cadernos as $nome => $info) {
+            $idsCadernos[$info['id']] = $nome;
+        }
+
+        foreach ($materiasRaw as $m) {
+            $cid = (int)$m['caderno_id'];
+            if ($cid > 0 && isset($idsCadernos[$cid])) {
+                $cadernos[$idsCadernos[$cid]]['materias'][] = $m['nome'];
+            } else {
+                // Matéria órfã — cai no Geral
+                if (!isset($cadernos['Geral'])) {
+                    $precisaCriarGeral = true;
+                    break;   // cria depois, então reprocessa
+                }
+                $cadernos['Geral']['materias'][] = $m['nome'];
+            }
+        }
+
+        // Se encontrou matéria órfã e não tinha Geral, cria agora
+        if ($precisaCriarGeral) {
+            $stmt = $db->prepare("INSERT INTO cadernos (usuario_id, nome) VALUES (?, ?)");
+            $stmt->execute([$usuario_id, 'Geral']);
+            $geralId = (int)$db->lastInsertId();
+            $cadernos['Geral'] = ['id' => $geralId, 'materias' => []];
+
+            // Reatribui todas as matérias órfãs pro Geral no banco
+            $stmt = $db->prepare("UPDATE materias SET caderno_id = ? WHERE usuario_id = ? AND (caderno_id IS NULL OR caderno_id NOT IN (SELECT id FROM cadernos WHERE usuario_id = ?))");
+            $stmt->execute([$geralId, $usuario_id, $usuario_id]);
+
+            // Re-vincula na memória
+            foreach ($materiasRaw as $m) {
+                $cid = (int)$m['caderno_id'];
+                if ($cid > 0 && isset($idsCadernos[$cid])) {
+                    $cadernos[$idsCadernos[$cid]]['materias'][] = $m['nome'];
+                } else {
+                    $cadernos['Geral']['materias'][] = $m['nome'];
+                }
+            }
+        }
+
+        // ------------------------------------------------------------
+        // 4. Monta estrutura de matérias (com tópicos e páginas)
+        // ------------------------------------------------------------
+        foreach ($materiasRaw as $m) {
             $materiaNome = $m['nome'];
             $materiaId = (int)$m['id'];
             $data['materias'][$materiaNome] = ['topicos' => []];
@@ -467,29 +558,25 @@ if ($action === 'load') {
                 $topicoId = (int)$t['id'];
                 $data['materias'][$materiaNome]['topicos'][$topicoNome] = ['paginas' => []];
 
-                $stmt3 = $db->prepare("SELECT id, titulo, ordem, public_id FROM paginas WHERE topico_id = ? ORDER BY ordem");
+                $stmt3 = $db->prepare("SELECT id, titulo, ordem, public_id, is_public FROM paginas WHERE topico_id = ? ORDER BY ordem");
                 $stmt3->execute([$topicoId]);
                 $paginas = $stmt3->fetchAll();
 
                 foreach ($paginas as $p) {
                     $paginaId = (int)$p['id'];
-                    $public_id = $p['public_id']; // 🔥 busca o public_id
                     $paginaData = [
                         'id' => $paginaId,
-                        'public_id' => $public_id,
-                        'is_public' => (int)$p['is_public'],  // 🔥 ADICIONE ESTA LINHA
+                        'public_id' => $p['public_id'],
+                        'is_public' => (int)$p['is_public'],
                         'titulo' => $p['titulo'],
                         'cards' => [],
                         'connections' => []
                     ];
 
-                    // Cards
-                    $stmt4 = $db->prepare("SELECT html, pos_left, pos_top, width, height, class_name, sort_order, state_json, card_id 
-                       FROM cards WHERE pagina_id = ? ORDER BY sort_order");
+                    $stmt4 = $db->prepare("SELECT html, pos_left, pos_top, width, height, class_name, sort_order, state_json, card_id
+                                           FROM cards WHERE pagina_id = ? ORDER BY sort_order");
                     $stmt4->execute([$paginaId]);
-                    $cards = $stmt4->fetchAll();
-
-                    foreach ($cards as $c) {
+                    foreach ($stmt4->fetchAll() as $c) {
                         $paginaData['cards'][] = [
                             'id' => null,
                             'html' => $c['html'],
@@ -500,17 +587,13 @@ if ($action === 'load') {
                             'className' => $c['class_name'],
                             'sort_order' => (int)$c['sort_order'],
                             'state' => $c['state_json'],
-                            'cardId' => $c['card_id']   // <-- NOVO
+                            'cardId' => $c['card_id']
                         ];
                     }
 
-                    // Connections
-                    $stmt5 = $db->prepare("SELECT from_index, from_pos, to_index, to_pos 
-                                           FROM connections WHERE pagina_id = ?");
+                    $stmt5 = $db->prepare("SELECT from_index, from_pos, to_index, to_pos FROM connections WHERE pagina_id = ?");
                     $stmt5->execute([$paginaId]);
-                    $connections = $stmt5->fetchAll();
-
-                    foreach ($connections as $conn) {
+                    foreach ($stmt5->fetchAll() as $conn) {
                         $paginaData['connections'][] = [
                             'fromIndex' => (int)$conn['from_index'],
                             'fromPos' => $conn['from_pos'],
@@ -524,7 +607,29 @@ if ($action === 'load') {
             }
         }
 
-        // Monta página atual
+        // ------------------------------------------------------------
+        // 5. Limpa o 'id' dos cadernos antes de devolver (front não usa)
+        // ------------------------------------------------------------
+        foreach ($cadernos as &$info) {
+            unset($info['id']);
+        }
+        unset($info);
+        $data['cadernos'] = $cadernos;
+
+        // ------------------------------------------------------------
+        // 6. Garante que current.caderno aponta pra um caderno existente
+        // ------------------------------------------------------------
+        if (!is_array($data['current'])) {
+            $data['current'] = ['caderno' => '', 'materia' => '', 'topico' => '', 'pagina' => 0];
+        }
+        if (empty($data['current']['caderno']) || !isset($cadernos[$data['current']['caderno']])) {
+            $primeiroCaderno = array_key_first($cadernos) ?: '';
+            $data['current']['caderno'] = $primeiroCaderno;
+        }
+
+        // ------------------------------------------------------------
+        // 7. Monta página atual
+        // ------------------------------------------------------------
         if ($data['current']) {
             $m = $data['current']['materia'] ?? '';
             $t = $data['current']['topico'] ?? '';
@@ -535,12 +640,19 @@ if ($action === 'load') {
                     $data['page']['id'] = $data['page']['id'] ?? 0;
                 }
             } else {
-                $primeiraMateria = array_key_first($data['materias']);
-                if ($primeiraMateria) {
-                    $primeiroTopico = array_key_first($data['materias'][$primeiraMateria]['topicos']);
-                    if ($primeiroTopico && !empty($data['materias'][$primeiraMateria]['topicos'][$primeiroTopico]['paginas'])) {
-                        $data['page'] = $data['materias'][$primeiraMateria]['topicos'][$primeiroTopico]['paginas'][0];
-                        $data['current'] = ['materia' => $primeiraMateria, 'topico' => $primeiroTopico, 'pagina' => 0];
+                // Fallback: primeira matéria do caderno atual
+                $cadernoAtual = $data['current']['caderno'] ?? '';
+                $primeira = $cadernos[$cadernoAtual]['materias'][0] ?? array_key_first($data['materias']);
+                if ($primeira && isset($data['materias'][$primeira]['topicos'])) {
+                    $primeiroTopico = array_key_first($data['materias'][$primeira]['topicos']);
+                    if ($primeiroTopico && !empty($data['materias'][$primeira]['topicos'][$primeiroTopico]['paginas'])) {
+                        $data['page'] = $data['materias'][$primeira]['topicos'][$primeiroTopico]['paginas'][0];
+                        $data['current'] = [
+                            'caderno' => $cadernoAtual,
+                            'materia' => $primeira,
+                            'topico' => $primeiroTopico,
+                            'pagina' => 0
+                        ];
                     }
                 }
             }
@@ -554,7 +666,6 @@ if ($action === 'load') {
     }
     exit;
 }
-
 // ============================================================
 // 8. ROTA PROTEGIDA: EXPORTAR PÁGINA (GET – sem CSRF)
 // ============================================================

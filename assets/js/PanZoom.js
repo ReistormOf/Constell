@@ -12,19 +12,18 @@
 
   const MIN_SCALE = 0.2;
   const MAX_SCALE = 3.0;
-  const UPDATE_INTERVAL = 16; // 16ms ≈ 60fps
 
-  let panThrottleTimer = null;
   let updateFramePending = false;
 
   function applyTransform() {
     container.style.transform = `translate(${translateX}px, ${translateY}px) scale(${scale})`;
     container.style.transformOrigin = "0 0";
 
-    // Atualiza conexões e altura com throttle fixo
+    // 🔥 Conexões atualizam em rAF (sync com monitor), mas com "amortecimento"
+    // pra não recalcular SVG a 240fps (é pesado)
     if (!updateFramePending) {
       updateFramePending = true;
-      setTimeout(() => {
+      requestAnimationFrame(() => {
         updateFramePending = false;
         if (typeof updateAllConnections === "function") {
           updateAllConnections();
@@ -32,7 +31,7 @@
         if (typeof updateContainerHeight === "function") {
           updateContainerHeight();
         }
-      }, UPDATE_INTERVAL);
+      });
     }
   }
 
@@ -83,6 +82,8 @@
     document.addEventListener("mouseup", onPanEnd);
   }
 
+  let panRafId = null;
+
   function onPanMove(e) {
     if (!isPanning) return;
     const dx = e.clientX - startX;
@@ -90,13 +91,12 @@
     translateX = startTranslateX + dx;
     translateY = startTranslateY + dy;
 
-    // 🔥 Throttle fixo de 16ms (60fps)
-    if (!panThrottleTimer) {
-      panThrottleTimer = setTimeout(() => {
-        panThrottleTimer = null;
-        applyTransform();
-      }, UPDATE_INTERVAL);
-    }
+    // 🔥 rAF em vez de setTimeout(16) — roda na taxa do monitor (240Hz, 144Hz…)
+    if (panRafId) cancelAnimationFrame(panRafId);
+    panRafId = requestAnimationFrame(() => {
+      panRafId = null;
+      applyTransform();
+    });
   }
 
   function onPanEnd() {
@@ -104,9 +104,10 @@
     container.style.cursor = "default";
     document.removeEventListener("mousemove", onPanMove);
     document.removeEventListener("mouseup", onPanEnd);
-    if (panThrottleTimer) {
-      clearTimeout(panThrottleTimer);
-      panThrottleTimer = null;
+
+    if (panRafId) {
+      cancelAnimationFrame(panRafId);
+      panRafId = null;
     }
     applyTransform();
   }

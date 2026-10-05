@@ -1,9 +1,9 @@
 <?php
 // config.php
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'u557429533_Constell');
-define('DB_USER', 'u557429533_Kingo');
-define('DB_PASS', 'Ze159King');   // vazio no XAMPP
+define('DB_NAME', 'constell');
+define('DB_USER', 'root');
+define('DB_PASS', '');   // vazio no XAMPP
 
 define('SMTP_USER', 'contato@snowcoder.com.br');
 define('SMTP_PASS', 'Ze1478@Kingo');

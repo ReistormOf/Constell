@@ -790,7 +790,35 @@ function collectState() {
   const cardsData = [];
 
   items.forEach((card, index) => {
-    // 🔥 Garante que todo card tenha um ID único ANTES de salvar
+    // 🔥 CONVERTE \n em <br> ANTES de clonar
+    card
+      .querySelectorAll(
+        '[contenteditable="plaintext-only"], [contenteditable="true"]',
+      )
+      .forEach((el) => {
+        const walker = document.createTreeWalker(
+          el,
+          NodeFilter.SHOW_TEXT,
+          null,
+          false,
+        );
+        const nodes = [];
+        let node;
+        while ((node = walker.nextNode())) nodes.push(node);
+        nodes.forEach((textNode) => {
+          const text = textNode.textContent;
+          if (!text.includes("\n")) return;
+          const fragment = document.createDocumentFragment();
+          const parts = text.split("\n");
+          parts.forEach((part, i) => {
+            if (part) fragment.appendChild(document.createTextNode(part));
+            if (i < parts.length - 1)
+              fragment.appendChild(document.createElement("br"));
+          });
+          textNode.parentNode.replaceChild(fragment, textNode);
+        });
+      });
+
     if (!card.dataset.cardId) {
       card.dataset.cardId = `card_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
     }
@@ -806,7 +834,7 @@ function collectState() {
       .forEach((el) => el.removeAttribute("contenteditable"));
 
     cardsData.push({
-      cardId: card.dataset.cardId || null, // <-- MUDANÇA AQUI
+      cardId: card.dataset.cardId || null,
       html: clone.outerHTML,
       left: card.style.left,
       top: card.style.top,
@@ -818,23 +846,21 @@ function collectState() {
     });
   });
 
-  // 🔥 CONEXÕES USAM IDs EM VEZ DE ÍNDICES
-  // 🔥 CONEXÕES COM IDs E ÍNDICES
+  // 🔥 CONEXÕES
   const connectionsData = connections
     .filter(
       (conn) => conn.fromCard && conn.toCard && conn.fromCard !== conn.toCard,
     )
-    .map((conn, index) => {
-      // Encontra os índices no container (ordem atual)
+    .map((conn) => {
       const allCards = Array.from(document.querySelectorAll(".editable-item"));
       const fromIndex = allCards.indexOf(conn.fromCard);
       const toIndex = allCards.indexOf(conn.toCard);
       return {
         fromId: conn.fromCard.dataset.cardId,
-        fromIndex: fromIndex,
+        fromIndex,
         fromPos: conn.fromPos,
         toId: conn.toCard.dataset.cardId,
-        toIndex: toIndex,
+        toIndex,
         toPos: conn.toPos,
       };
     });
@@ -945,10 +971,12 @@ function restoreState(pageData) {
 
         // Reativa edição
         const editableElements = card.querySelectorAll(
-          "p, h1, h2, h3, h4, h5, h6, .sticky-note, li, th, td, .file-name, .code-block, .terminal-content, blockquote",
+          "p, h1, h2, h3, h4, h5, h6, .sticky-note, li, th, td, " +
+            ".file-name, .code-block, .terminal-content, blockquote, " +
+            ".vscode-explanation > *", // 🔥 pega TODOS os filhos diretos
         );
         editableElements.forEach((el) => {
-          el.removeAttribute("contenteditable");
+          // Não força a remoção — só garante que o listener está ativo
           if (typeof enableEditOnDoubleClick === "function") {
             enableEditOnDoubleClick(el, plainTextOnBlur);
           }
@@ -1008,6 +1036,10 @@ function restoreState(pageData) {
       if (typeof updateSvgSize === "function") updateSvgSize();
       if (typeof updateAllConnections === "function") updateAllConnections();
       if (typeof updateMenuUI === "function") updateMenuUI();
+      // 🔥 Roda spell check depois que tudo renderizou
+      if (typeof spellCheckAllCards === "function") {
+        setTimeout(spellCheckAllCards, 1500);
+      }
     }, 50);
 
     console.log(
@@ -1213,16 +1245,17 @@ function restoreTimeline(card, state) {
     card.dataset.state = JSON.stringify({ type: "timeline", events });
     pushState();
   }
-}
-function render() {
-  const container = card.querySelector(".timeline-container");
-  if (!container) return;
-  container.innerHTML = "";
 
-  events.forEach((ev, idx) => {
-    const item = document.createElement("div");
-    item.className = "timeline-item";
-    item.style.cssText = `
+  function render() {
+    // ← MOVE pra dentro
+    const container = card.querySelector(".timeline-container");
+    if (!container) return;
+    container.innerHTML = "";
+
+    events.forEach((ev, idx) => {
+      const item = document.createElement("div");
+      item.className = "timeline-item";
+      item.style.cssText = `
       display: flex;
       gap: 12px;
       align-items: stretch;
@@ -1232,9 +1265,9 @@ function render() {
       transition: all 0.3s ease;
     `;
 
-    // ----- LINHA (DATA + MARCADOR) -----
-    const lineWrapper = document.createElement("div");
-    lineWrapper.style.cssText = `
+      // ----- LINHA (DATA + MARCADOR) -----
+      const lineWrapper = document.createElement("div");
+      lineWrapper.style.cssText = `
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1242,10 +1275,10 @@ function render() {
       position: relative;
     `;
 
-    // Data (editável)
-    const dateDiv = document.createElement("div");
-    dateDiv.contentEditable = true;
-    dateDiv.style.cssText = `
+      // Data (editável)
+      const dateDiv = document.createElement("div");
+      dateDiv.contentEditable = true;
+      dateDiv.style.cssText = `
       font-size: 12px;
       color: var(--text-muted);
       background: transparent;
@@ -1257,19 +1290,19 @@ function render() {
       width: 100%;
       cursor: text;
     `;
-    dateDiv.textContent = ev.date;
-    enableEditOnDoubleClick(dateDiv, plainTextOnBlur);
-    let dateTimer;
-    dateDiv.addEventListener("input", () => {
-      clearTimeout(dateTimer);
-      ev.date = dateDiv.textContent;
-      dateTimer = setTimeout(saveState, 300);
-    });
-    lineWrapper.appendChild(dateDiv);
+      dateDiv.textContent = ev.date;
+      enableEditOnDoubleClick(dateDiv, plainTextOnBlur);
+      let dateTimer;
+      dateDiv.addEventListener("input", () => {
+        clearTimeout(dateTimer);
+        ev.date = dateDiv.textContent;
+        dateTimer = setTimeout(saveState, 300);
+      });
+      lineWrapper.appendChild(dateDiv);
 
-    // Marcador + linha vertical
-    const lineContainer = document.createElement("div");
-    lineContainer.style.cssText = `
+      // Marcador + linha vertical
+      const lineContainer = document.createElement("div");
+      lineContainer.style.cssText = `
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -1278,8 +1311,8 @@ function render() {
       position: relative;
     `;
 
-    const marker = document.createElement("div");
-    marker.style.cssText = `
+      const marker = document.createElement("div");
+      marker.style.cssText = `
       width: 14px;
       height: 14px;
       border-radius: 50%;
@@ -1292,31 +1325,31 @@ function render() {
       position: relative;
       z-index: 2;
     `;
-    marker.title = ev.done ? "Marcar como pendente" : "Marcar como concluído";
-    marker.addEventListener("click", function (e) {
-      e.stopPropagation();
-      ev.done = !ev.done;
-      render();
-      saveState();
-    });
-    lineContainer.appendChild(marker);
+      marker.title = ev.done ? "Marcar como pendente" : "Marcar como concluído";
+      marker.addEventListener("click", function (e) {
+        e.stopPropagation();
+        ev.done = !ev.done;
+        render();
+        saveState();
+      });
+      lineContainer.appendChild(marker);
 
-    if (idx < events.length - 1) {
-      const line = document.createElement("div");
-      line.style.cssText = `
+      if (idx < events.length - 1) {
+        const line = document.createElement("div");
+        line.style.cssText = `
         width: 2px;
         flex: 1;
         background: linear-gradient(to bottom, ${ev.done ? "#4cd9a0" : "#4a7cf7"}, var(--border-subtle));
         min-height: 20px;
         margin-top: 2px;
       `;
-      lineContainer.appendChild(line);
-    }
-    lineWrapper.appendChild(lineContainer);
+        lineContainer.appendChild(line);
+      }
+      lineWrapper.appendChild(lineContainer);
 
-    // ----- CONTEÚDO (TÍTULO + HORA) -----
-    const contentDiv = document.createElement("div");
-    contentDiv.style.cssText = `
+      // ----- CONTEÚDO (TÍTULO + HORA) -----
+      const contentDiv = document.createElement("div");
+      contentDiv.style.cssText = `
       flex: 1;
       display: flex;
       flex-direction: column;
@@ -1328,9 +1361,9 @@ function render() {
       position: relative;
     `;
 
-    // Botões de ação (aparecem ao passar o mouse)
-    const actions = document.createElement("div");
-    actions.style.cssText = `
+      // Botões de ação (aparecem ao passar o mouse)
+      const actions = document.createElement("div");
+      actions.style.cssText = `
       display: flex;
       gap: 4px;
       position: absolute;
@@ -1339,17 +1372,17 @@ function render() {
       opacity: 0;
       transition: opacity 0.2s;
     `;
-    actions.innerHTML = `
+      actions.innerHTML = `
       <button class="move-up" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; padding:0 2px;" title="Mover para cima">↑</button>
       <button class="move-down" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; font-size:12px; padding:0 2px;" title="Mover para baixo">↓</button>
       <button class="delete-event" style="background:transparent; border:none; color:#ff6b6b; cursor:pointer; font-size:12px; padding:0 2px;" title="Remover evento">✕</button>
     `;
-    contentDiv.appendChild(actions);
+      contentDiv.appendChild(actions);
 
-    // Título (editável)
-    const titleDiv = document.createElement("div");
-    titleDiv.contentEditable = true;
-    titleDiv.style.cssText = `
+      // Título (editável)
+      const titleDiv = document.createElement("div");
+      titleDiv.contentEditable = true;
+      titleDiv.style.cssText = `
       font-weight: 500;
       color: var(--text-primary);
       background: transparent;
@@ -1359,20 +1392,20 @@ function render() {
       font-size: 14px;
       cursor: text;
     `;
-    titleDiv.textContent = ev.title;
-    enableEditOnDoubleClick(titleDiv, plainTextOnBlur);
-    let titleTimer;
-    titleDiv.addEventListener("input", () => {
-      clearTimeout(titleTimer);
-      ev.title = titleDiv.textContent;
-      titleTimer = setTimeout(saveState, 300);
-    });
-    contentDiv.appendChild(titleDiv);
+      titleDiv.textContent = ev.title;
+      enableEditOnDoubleClick(titleDiv, plainTextOnBlur);
+      let titleTimer;
+      titleDiv.addEventListener("input", () => {
+        clearTimeout(titleTimer);
+        ev.title = titleDiv.textContent;
+        titleTimer = setTimeout(saveState, 300);
+      });
+      contentDiv.appendChild(titleDiv);
 
-    // Hora (editável)
-    const timeDiv = document.createElement("div");
-    timeDiv.contentEditable = true;
-    timeDiv.style.cssText = `
+      // Hora (editável)
+      const timeDiv = document.createElement("div");
+      timeDiv.contentEditable = true;
+      timeDiv.style.cssText = `
       font-size: 12px;
       color: var(--text-muted);
       background: transparent;
@@ -1381,60 +1414,65 @@ function render() {
       outline: none;
       cursor: text;
     `;
-    timeDiv.textContent = ev.time;
-    enableEditOnDoubleClick(timeDiv, plainTextOnBlur);
-    let timeTimer;
-    timeDiv.addEventListener("input", () => {
-      clearTimeout(timeTimer);
-      ev.time = timeDiv.textContent;
-      timeTimer = setTimeout(saveState, 300);
+      timeDiv.textContent = ev.time;
+      enableEditOnDoubleClick(timeDiv, plainTextOnBlur);
+      let timeTimer;
+      timeDiv.addEventListener("input", () => {
+        clearTimeout(timeTimer);
+        ev.time = timeDiv.textContent;
+        timeTimer = setTimeout(saveState, 300);
+      });
+      contentDiv.appendChild(timeDiv);
+
+      // Monta o item
+      item.appendChild(lineWrapper);
+      item.appendChild(contentDiv);
+
+      // Eventos dos botões de ação
+      item
+        .querySelector(".delete-event")
+        .addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (events.length <= 1) {
+            alert("Não é possível remover o último evento.");
+            return;
+          }
+          events.splice(idx, 1);
+          render();
+          saveState();
+        });
+      item.querySelector(".move-up").addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (idx > 0) {
+          [events[idx], events[idx - 1]] = [events[idx - 1], events[idx]];
+          render();
+          saveState();
+        }
+      });
+      item.querySelector(".move-down").addEventListener("click", function (e) {
+        e.stopPropagation();
+        if (idx < events.length - 1) {
+          [events[idx], events[idx + 1]] = [events[idx + 1], events[idx]];
+          render();
+          saveState();
+        }
+      });
+
+      // Mostrar/ocultar ações ao passar o mouse
+      item.addEventListener("mouseenter", () => (actions.style.opacity = "1"));
+      item.addEventListener("mouseleave", () => (actions.style.opacity = "0"));
+
+      container.appendChild(item);
     });
-    contentDiv.appendChild(timeDiv);
 
-    // Monta o item
-    item.appendChild(lineWrapper);
-    item.appendChild(contentDiv);
-
-    // Eventos dos botões de ação
-    item.querySelector(".delete-event").addEventListener("click", function (e) {
-      e.stopPropagation();
-      if (events.length <= 1) {
-        alert("Não é possível remover o último evento.");
-        return;
-      }
-      events.splice(idx, 1);
-      render();
-      saveState();
-    });
-    item.querySelector(".move-up").addEventListener("click", function (e) {
-      e.stopPropagation();
-      if (idx > 0) {
-        [events[idx], events[idx - 1]] = [events[idx - 1], events[idx]];
-        render();
-        saveState();
-      }
-    });
-    item.querySelector(".move-down").addEventListener("click", function (e) {
-      e.stopPropagation();
-      if (idx < events.length - 1) {
-        [events[idx], events[idx + 1]] = [events[idx + 1], events[idx]];
-        render();
-        saveState();
-      }
-    });
-
-    // Mostrar/ocultar ações ao passar o mouse
-    item.addEventListener("mouseenter", () => (actions.style.opacity = "1"));
-    item.addEventListener("mouseleave", () => (actions.style.opacity = "0"));
-
-    container.appendChild(item);
-  });
-
-  // Atualiza contador
-  const counter = card.querySelector(".event-counter");
-  if (counter) {
-    const done = events.filter((e) => e.done).length;
-    counter.textContent = `${done}/${events.length} concluídos`;
+    // Atualiza contador
+    const counter = card.querySelector(".event-counter");
+    if (counter) {
+      const done = events.filter((e) => e.done).length;
+      counter.textContent = `${done}/${events.length} concluídos`;
+    }
+    render(); // ← CHAMA no final
+    saveState();
   }
 }
 

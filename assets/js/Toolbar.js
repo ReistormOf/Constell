@@ -587,9 +587,19 @@ let highlightTimer = null;
 
 async function highlightErrors(element, silent = false) {
   // 🔥 NÃO EXECUTA DURANTE EDIÇÃO
-  if (isEditing) {
-    if (!silent) console.log("⏳ Editando, verificação ortográfica adiada");
-    return 0;
+  // ✅ NOVO — salva a posição do cursor ANTES de mexer no DOM
+  const wasFocused =
+    document.activeElement === element ||
+    element.contains(document.activeElement);
+  let savedCursorOffset = null;
+  if (wasFocused) {
+    const sel = window.getSelection();
+    if (sel.rangeCount > 0 && element.contains(sel.anchorNode)) {
+      const pre = document.createRange();
+      pre.selectNodeContents(element);
+      pre.setEnd(sel.anchorNode, sel.anchorOffset);
+      savedCursorOffset = pre.toString().length;
+    }
   }
 
   // 🔥 CANCELA EXECUÇÕES ANTERIORES (debounce)
@@ -747,11 +757,83 @@ async function highlightErrors(element, silent = false) {
       }
     }
   }
-
+  // ✅ RESTAURA a posição do cursor depois de mexer no DOM
+  if (wasFocused && savedCursorOffset !== null) {
+    const walker2 = document.createTreeWalker(
+      element,
+      NodeFilter.SHOW_TEXT,
+      null,
+      false,
+    );
+    let acc = 0;
+    let node2;
+    let restored = false;
+    while ((node2 = walker2.nextNode())) {
+      const len = node2.textContent.length;
+      if (acc + len >= savedCursorOffset) {
+        const range = document.createRange();
+        range.setStart(node2, Math.max(0, savedCursorOffset - acc));
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        restored = true;
+        break;
+      }
+      acc += len;
+    }
+    // Fallback: se não achou, joga pro final
+    if (!restored) {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      range.collapse(false);
+      const sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  }
   if (!silent) {
     alert(`🔎 ${matches.length} erro(s) encontrado(s) e sublinhado(s).`);
   }
   return matches.length;
+}
+
+// ===== SPELL CHECK AUTOMÁTICO APÓS RENDER =====
+function spellCheckAllCards() {
+  // Não roda durante edição (senão bagunça o cursor)
+  if (isEditing) return;
+
+  const container = document.getElementById("cards-container");
+  if (!container) return;
+
+  // Seleciona todos os elementos de texto dentro dos cards
+  const selectors =
+    "p, h1, h2, h3, h4, h5, h6, li, td, th, " +
+    ".sticky-note, .file-name, .code-block, .terminal-content, " +
+    ".vscode-explanation > *";
+
+  const elements = Array.from(container.querySelectorAll(selectors));
+
+  // Processa um a um com intervalo pra não estourar o rate limit da API
+  let index = 0;
+  function processNext() {
+    if (index >= elements.length) return;
+    const el = elements[index++];
+    const text = (el.innerText || "").trim();
+
+    // Pula vazios e textos muito curtos
+    if (text.length < 3) {
+      processNext();
+      return;
+    }
+
+    // Chama em modo silencioso (não dispara alert)
+    highlightErrors(el, true).finally(() => {
+      // 800ms entre requisições (LanguageTool grátis ~20/min)
+      setTimeout(processNext, 800);
+    });
+  }
+  processNext();
 }
 
 // ===== CORREÇÃO AUTOMÁTICA EM TEMPO REAL =====
@@ -760,7 +842,12 @@ let lastSpellChecked = "";
 
 document.addEventListener("input", function (e) {
   const target = e.target;
-  if (!target.closest('[contenteditable="true"]')) return;
+  if (
+    !target.closest(
+      '[contenteditable="true"], [contenteditable="plaintext-only"]',
+    )
+  )
+    return;
 
   const text = target.innerText || "";
   if (text.length < 3) return;
@@ -770,15 +857,14 @@ document.addEventListener("input", function (e) {
 
   clearTimeout(spellCheckTimeout);
   spellCheckTimeout = setTimeout(() => {
-    if (target.isConnected && target.contentEditable === "true") {
+    const ce = target.contentEditable;
+    if (target.isConnected && (ce === "true" || ce === "plaintext-only")) {
       if (typeof window.highlightErrors === "function") {
         window.highlightErrors(target, true);
-      } else {
-        console.warn("highlightErrors não está definida");
       }
     }
     spellCheckTimeout = null;
-  }, 600);
+  }, 800); // subi de 600 → 800ms, mais confortável
 });
 
 // ===== CALCULA POSIÇÃO IDEAL PARA A TOOLBAR =====
@@ -993,6 +1079,7 @@ function createToolbar(element) {
     targetElements = [];
     filterWord = "";
     element.contentEditable = false;
+    element.style.cursor = "pointer";
     element.blur();
   });
   actionsContainer.appendChild(closeBtn);
@@ -1004,6 +1091,10 @@ function createToolbar(element) {
   let dragOffsetX = 0;
   let dragOffsetY = 0;
 
+  let cachedW = 0,
+    cachedH = 0;
+  let rafId = null;
+
   function startDrag(e) {
     if (!e.target.closest(".toolbar-drag-handle")) return;
     if (e.button !== 0) return;
@@ -1014,6 +1105,10 @@ function createToolbar(element) {
     dragOffsetX = e.clientX - rect.left;
     dragOffsetY = e.clientY - rect.top;
 
+    // 🔥 Cacheia UMA VEZ — evita reflow a cada frame
+    cachedW = toolbar.offsetWidth;
+    cachedH = toolbar.offsetHeight;
+
     toolbar.classList.add("dragging");
 
     document.addEventListener("mousemove", onDrag);
@@ -1023,20 +1118,28 @@ function createToolbar(element) {
   function onDrag(e) {
     if (!isDragging) return;
     e.preventDefault();
-    let newLeft = e.clientX - dragOffsetX;
-    let newTop = e.clientY - dragOffsetY;
 
-    const maxX = window.innerWidth - toolbar.offsetWidth - 10;
-    const maxY = window.innerHeight - toolbar.offsetHeight - 10;
-    newLeft = Math.max(10, Math.min(newLeft, maxX));
-    newTop = Math.max(10, Math.min(newTop, maxY));
+    // 🚫 NÃO salva em localStorage aqui
+    // 🚫 NÃO lê offsetWidth/offsetHeight aqui
+    // 🚫 NÃO aplica estilo direto — agenda com rAF
 
-    toolbar.style.left = newLeft + "px";
-    toolbar.style.top = newTop + "px";
+    const clientX = e.clientX;
+    const clientY = e.clientY;
 
-    // SALVA A POSIÇÃO EM TEMPO REAL DURANTE O ARRASTE
-    localStorage.setItem("toolbar-left", newLeft + "px");
-    localStorage.setItem("toolbar-top", newTop + "px");
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(() => {
+      let newLeft = clientX - dragOffsetX;
+      let newTop = clientY - dragOffsetY;
+
+      const maxX = window.innerWidth - cachedW - 10;
+      const maxY = window.innerHeight - cachedH - 10;
+      newLeft = Math.max(10, Math.min(newLeft, maxX));
+      newTop = Math.max(10, Math.min(newTop, maxY));
+
+      toolbar.style.left = newLeft + "px";
+      toolbar.style.top = newTop + "px";
+      rafId = null;
+    });
   }
 
   function stopDrag() {
@@ -1045,6 +1148,15 @@ function createToolbar(element) {
     toolbar.classList.remove("dragging");
     document.removeEventListener("mousemove", onDrag);
     document.removeEventListener("mouseup", stopDrag);
+
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+
+    // 🔥 Salva a posição FINAL uma única vez
+    localStorage.setItem("toolbar-left", toolbar.style.left);
+    localStorage.setItem("toolbar-top", toolbar.style.top);
   }
 
   dragHandle.addEventListener("mousedown", startDrag);
@@ -1432,6 +1544,24 @@ function removeHighlightSpans() {
 
 function enableEditOnDoubleClick(element, onBlurCallback) {
   element.style.cursor = "pointer";
+  element.addEventListener("focus", () => {
+    element.style.cursor = "text";
+  });
+  element.addEventListener("blur", () => {
+    element.style.cursor = "pointer";
+  });
+  // 🔥 INTERCEPTA PASTE — cola como texto puro, sem fragmentar em divs
+  element.addEventListener("paste", function (e) {
+    if (this.contentEditable !== "true") return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const text =
+      (e.clipboardData || window.clipboardData).getData("text/plain") || "";
+
+    document.execCommand("insertText", false, text);
+  });
   element.addEventListener("click", function (e) {
     // 1) Shift+Click → toggle target (selecionar palavra para filtro)
     if (e.shiftKey) {
@@ -1454,9 +1584,9 @@ function enableEditOnDoubleClick(element, onBlurCallback) {
       targetElements.push(this);
       this.classList.add("target-selected");
 
-      this.contentEditable = true;
+      this.contentEditable = "plaintext-only";
+      this.style.cursor = "text";
       this.focus();
-
       const sel = window.getSelection();
       const firstNode = this.firstChild;
       if (firstNode) {
@@ -1495,8 +1625,31 @@ function enableEditOnDoubleClick(element, onBlurCallback) {
       return; // ← importante: não executa o resto
     }
 
-    // 3) Se já está em modo de edição, não faz nada (deixa o navegador cuidar do cursor)
-    if (this.contentEditable === "true") {
+    // 3) Se já está em modo de edição, POSICIONA O CURSOR onde clicou
+    if (
+      this.contentEditable === "true" ||
+      this.contentEditable === "plaintext-only"
+    ) {
+      // 🔥 Coloca o cursor no ponto exato do clique
+      let range = null;
+      if (document.caretRangeFromPoint) {
+        // Chrome, Edge, Safari
+        range = document.caretRangeFromPoint(e.clientX, e.clientY);
+      } else if (document.caretPositionFromPoint) {
+        // Firefox
+        const pos = document.caretPositionFromPoint(e.clientX, e.clientY);
+        if (pos) {
+          range = document.createRange();
+          range.setStart(pos.offsetNode, pos.offset);
+          range.collapse(true);
+        }
+      }
+
+      if (range && this.contains(range.startContainer)) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      }
       return;
     }
 
@@ -1594,6 +1747,11 @@ function updateHighlights() {
 }
 
 function addResizeHandle(container) {
+  // 🔥 Remove handles existentes antes de criar um novo
+  container
+    .querySelectorAll(":scope > .resize-handle")
+    .forEach((el) => el.remove());
+
   const handle = document.createElement("div");
   handle.className = "resize-handle";
   handle.title = "Redimensionar (Shift para desativar snap)";
